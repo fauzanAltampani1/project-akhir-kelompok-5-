@@ -40,7 +40,7 @@ TaskVerse adalah aplikasi *modular collaborative productivity* berbasis Flutter.
 * [x] Fungsi utama Personal & Project Task
 * [x] Sistem Thread & Chat
 * [x] Dummy Logic Reminder & Notifikasi
-* [ ] Backend penuh belum tersedia (hanya login/register)
+* [x] Backend ada
 
 ## 👥 Kontributor
 
