@@ -1,4 +1,4 @@
-# TaskVerse BETA 0.5
+# TaskVerse v1.0
 
 TaskVerse adalah aplikasi *modular collaborative productivity* berbasis Flutter. Aplikasi ini dirancang untuk membantu pengguna mengelola tugas pribadi dan proyek tim secara kolaboratif, lengkap dengan sistem komunikasi ala Slack/Discord.
 
