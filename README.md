@@ -52,9 +52,7 @@ TaskVerse adalah aplikasi *modular collaborative productivity* berbasis Flutter.
 | Adrian Rifqi Ghifari | 1303220035 | Mengerjakan UI beberapa Page, Register dan Login page,dan laporan
 
                        |
-| Cholilur Rahman      | 1303223105 | Mengerjakan UI beberapa Page,Splash screen dan profile page,dan laporan
-
-                     |
+| Cholilur Rahman      | 1303223105 | Mengerjakan UI beberapa Page,Splash screen dan profile page,dan laporan                     |
 
 ---
 
