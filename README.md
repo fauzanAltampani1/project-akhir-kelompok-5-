@@ -25,7 +25,7 @@ TaskVerse adalah aplikasi *modular collaborative productivity* berbasis Flutter.
 
 ![Thread Screenshot](screenshots/thread.jpg)
 
-> **Catatan**: Gambar akan muncul jika diletakkan di folder `screenshots/` dalam repo ini. Silakan sesuaikan nama file dan folder sesuai kebutuhanmu.
+
 
 ## ⚙️ Teknologi yang Digunakan
 
