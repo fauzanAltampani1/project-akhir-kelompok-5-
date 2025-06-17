@@ -1,3 +1,9 @@
-const String baseUrl = 'http://localhost:8800/taskverse_api'; 
+const String baseUrl = 'http://localhost:8800/taskverse_api';
 const String registerEndpoint = '/register.php';
 const String loginEndpoint = '/login.php';
+const String usersEndpoint = '/users.php';
+const String threadsEndpoint = '/threads.php';
+const String projectsEndpoint = '/projects.php';
+const String tasksEndpoint = '/tasks.php';
+const String projectTasksEndpoint = '/project_tasks.php';
+const String notificationsEndpoint = '/notifications.php';

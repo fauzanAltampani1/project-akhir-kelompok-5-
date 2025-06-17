@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../config/themes/app_colors.dart';
 import '../../../config/themes/app_text_styles.dart';
+import '../../../core/utils/logger.dart'; // Add Logger import
 import '../../../data/models/project_model.dart';
 import '../../../data/models/project_task_model.dart';
 import '../../../data/models/user_model.dart';
@@ -15,16 +16,10 @@ import '../../thread/providers/thread_provider.dart';
 class ProjectDetailScreen extends StatefulWidget {
   final String projectId;
 
-  const ProjectDetailScreen({Key? key, required this.projectId})
-    : super(key: key);
+  const ProjectDetailScreen({super.key, required this.projectId});
 
   @override
-  State<ProjectDetailScreen> createState() {
-    if (projectId.isEmpty) {
-      print('❌ ProjectDetailScreen: Empty projectId provided to constructor');
-    }
-    return _ProjectDetailScreenState();
-  }
+  State<ProjectDetailScreen> createState() => _ProjectDetailScreenState();
 }
 
 class _ProjectDetailScreenState extends State<ProjectDetailScreen>
@@ -252,7 +247,7 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen>
               width: double.infinity,
               padding: EdgeInsets.all(screenWidth * 0.04),
               decoration: BoxDecoration(
-                color: AppColors.secondary.withOpacity(0.5),
+                color: AppColors.secondary.withAlpha(128),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Text(
@@ -495,7 +490,7 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen>
       child: Container(
         padding: EdgeInsets.all(screenWidth * 0.04),
         decoration: BoxDecoration(
-          color: const Color(0xFF0C9371).withOpacity(0.5),
+          color: const Color(0xFF0C9371).withAlpha(128),
           borderRadius: BorderRadius.circular(12),
         ),
         child: Column(
@@ -564,7 +559,7 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen>
     return Card(
       margin: EdgeInsets.only(bottom: screenWidth * 0.02),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      color: const Color(0xFF0C9371).withOpacity(0.5),
+      color: const Color(0xFF0C9371).withAlpha(128),
       child: ListTile(
         contentPadding: EdgeInsets.all(screenWidth * 0.03),
         leading: CircleAvatar(
@@ -747,57 +742,68 @@ class _ProjectDetailScreenState extends State<ProjectDetailScreen>
   }
 
   Future<void> _openProjectThread() async {
+    if (!mounted) return;
+
     final threadProvider = Provider.of<ThreadProvider>(context, listen: false);
     final projectProvider = Provider.of<ProjectProvider>(
       context,
       listen: false,
     );
 
-    print(
-      '🔍 ProjectDetailScreen: Checking thread for project ${project!.id}...',
-    );
-    print(
-      '🔍 ProjectDetailScreen: Current project.threadId: ${project!.threadId}',
-    );
+    // Store BuildContext before async gap
+    final currentContext = context;
 
     // Kalau threadId null, bikin thread baru
     if (project!.threadId == null || project!.threadId!.isEmpty) {
-      print(
-        '🔧 ProjectDetailScreen: threadId is null or empty, creating new thread...',
-      );
-      ScaffoldMessenger.of(context).showSnackBar(
+      if (!mounted) return;
+      ScaffoldMessenger.of(currentContext).showSnackBar(
         const SnackBar(content: Text('Creating project thread...')),
       );
-      final newThread = await ThreadIntegrationHelper.createProjectThread(
-        project: project!,
-        threadProvider: threadProvider,
-      );
-      print(
-        '✅ ProjectDetailScreen: New thread created with ID: ${newThread.id}',
-      );
 
-      // Update project dengan threadId yang baru
-      await projectProvider.updateProject(
-        project!.id,
-        threadId: newThread.id,
-        threadCount: project!.threadCount + 1,
-      );
+      try {
+        final newThread = await ThreadIntegrationHelper.createProjectThread(
+          project: project!,
+          threadProvider: threadProvider,
+        );
 
-      // Refresh project data
-      setState(() {
-        project = projectProvider.getProjectById(widget.projectId);
-      });
-      print(
-        '🔍 ProjectDetailScreen: Updated project.threadId: ${project!.threadId}',
-      );
+        // Create new project data with updated thread info
+        final updatedProject = ProjectModel(
+          id: project!.id,
+          name: project!.name,
+          description: project!.description,
+          creator: project!.creator,
+          creatorId: project!.creatorId,
+          status: project!.status,
+          members: project!.members,
+          taskCount: project!.taskCount,
+          threadCount: project!.threadCount + 1,
+          threadId: newThread.id,
+          createdAt: project!.createdAt,
+          updatedAt: DateTime.now(),
+        );
+
+        // Update project in backend
+        await projectProvider.updateAndRefresh(updatedProject);
+
+        if (!mounted) return;
+
+        // Refresh local state
+        setState(() {
+          project = updatedProject;
+        });
+      } catch (e) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(currentContext).showSnackBar(
+          const SnackBar(content: Text('Failed to create project thread')),
+        );
+        return;
+      }
     }
 
     // Validasi threadId
     if (project!.threadId == null || project!.threadId!.isEmpty) {
-      print(
-        '❌ ProjectDetailScreen: Failed to set threadId for project ${project!.id}',
-      );
-      ScaffoldMessenger.of(context).showSnackBar(
+      if (!mounted) return;
+      ScaffoldMessenger.of(currentContext).showSnackBar(
         const SnackBar(content: Text('Failed to create project thread')),
       );
       return;

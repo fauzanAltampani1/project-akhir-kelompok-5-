@@ -3,7 +3,6 @@ import '../../../data/models/user_model.dart';
 import '../../../data/repositories/auth_repository.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-
 class AuthProvider with ChangeNotifier {
   final AuthRepository _authRepository = AuthRepository();
   UserModel? _currentUser;
@@ -33,7 +32,8 @@ class AuthProvider with ChangeNotifier {
       return false;
     }
   }
- Future<bool> login(String email, String password) async {
+
+  Future<bool> login(String email, String password) async {
     try {
       _isLoading = true;
       _errorMessage = null;
@@ -79,8 +79,51 @@ class AuthProvider with ChangeNotifier {
       print('Logout error: $e');
     }
   }
+
   void clearError() {
     _errorMessage = null;
     notifyListeners();
+  }
+
+  Future<bool> updateProfile(String name) async {
+    try {
+      _isLoading = true;
+      _errorMessage = null;
+      notifyListeners();
+
+      final user = await _authRepository.updateProfile(_currentUser!.id, name);
+      _currentUser = user;
+      UserModel.currentUser = user;
+      _isLoading = false;
+      notifyListeners();
+      return true;
+    } catch (e) {
+      _isLoading = false;
+      _errorMessage = e.toString().replaceFirst('Exception: ', '');
+      notifyListeners();
+      return false;
+    }
+  }
+
+  Future<bool> deleteAccount() async {
+    try {
+      _isLoading = true;
+      _errorMessage = null;
+      notifyListeners();
+
+      final success = await _authRepository.deleteAccount(_currentUser!.id);
+      if (success) {
+        _currentUser = null;
+        UserModel.currentUser = UserModel(id: '', name: '', email: '');
+      }
+      _isLoading = false;
+      notifyListeners();
+      return success;
+    } catch (e) {
+      _isLoading = false;
+      _errorMessage = e.toString().replaceFirst('Exception: ', '');
+      notifyListeners();
+      return false;
+    }
   }
 }

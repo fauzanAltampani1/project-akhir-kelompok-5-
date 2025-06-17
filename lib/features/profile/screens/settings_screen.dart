@@ -24,7 +24,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void initState() {
     super.initState();
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
-    _nameController = TextEditingController(text: authProvider.currentUser?.name ?? '');
+    _nameController = TextEditingController(
+      text: authProvider.currentUser?.name ?? '',
+    );
     _loadPreferences();
   }
 
@@ -33,9 +35,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
     setState(() {
       _isDarkMode = prefs.getBool('dark_mode') ?? false;
     });
-    final projectProvider = Provider.of<ProjectProvider>(context, listen: false);
+    final projectProvider = Provider.of<ProjectProvider>(
+      context,
+      listen: false,
+    );
     for (var project in projectProvider.userProjects) {
-      _projectNotifPrefs[project.id] = prefs.getBool('notif_${project.id}') ?? true;
+      _projectNotifPrefs[project.id] =
+          prefs.getBool('notif_${project.id}') ?? true;
     }
   }
 
@@ -58,28 +64,61 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _deleteAccount(BuildContext context) async {
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Delete Account'),
-        content: const Text('Are you sure? This action cannot be undone.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
+      builder:
+          (context) => AlertDialog(
+            title: const Text('Delete Account'),
+            content: const Text('Are you sure? This action cannot be undone.'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Cancel'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context, true),
+                style: TextButton.styleFrom(foregroundColor: AppColors.error),
+                child: const Text('Delete'),
+              ),
+            ],
           ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: TextButton.styleFrom(foregroundColor: AppColors.error),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
     );
 
     if (confirmed == true) {
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
-      await authProvider.logout(); // Dummy delete, just logout
-      if (context.mounted) {
+      final success = await authProvider.deleteAccount();
+      if (success && context.mounted) {
         Navigator.pushNamedAndRemoveUntil(context, '/splash', (route) => false);
+      } else if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              authProvider.errorMessage ?? 'Failed to delete account',
+            ),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _updateProfile(
+    BuildContext context,
+    AuthProvider authProvider,
+  ) async {
+    if (_formKey.currentState!.validate()) {
+      final success = await authProvider.updateProfile(_nameController.text);
+      if (success && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Profile updated successfully')),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              authProvider.errorMessage ?? 'Failed to update profile',
+            ),
+            backgroundColor: Colors.red,
+          ),
+        );
       }
     }
   }
@@ -97,9 +136,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final user = authProvider.currentUser;
 
     if (user == null) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      );
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
     return Scaffold(
@@ -115,7 +152,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
               // Profile Section
               Text(
                 'Profile',
-                style: AppTextStyles.heading3.copyWith(fontFamily: 'Montserrat'),
+                style: AppTextStyles.heading3.copyWith(
+                  fontFamily: 'Montserrat',
+                ),
               ),
               const SizedBox(height: 12),
               Card(
@@ -129,9 +168,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           labelText: 'Name',
                           border: OutlineInputBorder(),
                         ),
-                        style: AppTextStyles.bodyMedium.copyWith(fontFamily: 'Montserrat'),
-                        validator: (value) =>
-                            value?.isEmpty ?? true ? 'Name cannot be empty' : null,
+                        style: AppTextStyles.bodyMedium.copyWith(
+                          fontFamily: 'Montserrat',
+                        ),
+                        validator:
+                            (value) =>
+                                value?.isEmpty ?? true
+                                    ? 'Name cannot be empty'
+                                    : null,
                       ),
                       const SizedBox(height: 12),
                       TextFormField(
@@ -140,20 +184,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           labelText: 'Email',
                           border: OutlineInputBorder(),
                         ),
-                        style: AppTextStyles.bodyMedium.copyWith(fontFamily: 'Montserrat'),
+                        style: AppTextStyles.bodyMedium.copyWith(
+                          fontFamily: 'Montserrat',
+                        ),
                         enabled: false,
                       ),
                       const SizedBox(height: 16),
                       SizedBox(
                         width: double.infinity,
                         child: ElevatedButton(
-                          onPressed: () {
-                            if (_formKey.currentState!.validate()) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('Profile updated (dummy)')),
-                              );
-                            }
-                          },
+                          onPressed:
+                              () => _updateProfile(context, authProvider),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: AppColors.primary,
                             foregroundColor: Colors.white,
@@ -163,7 +204,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           ),
                           child: Text(
                             'Save Changes',
-                            style: AppTextStyles.button.copyWith(fontFamily: 'Montserrat'),
+                            style: AppTextStyles.button.copyWith(
+                              fontFamily: 'Montserrat',
+                            ),
                           ),
                         ),
                       ),
@@ -175,38 +218,48 @@ class _SettingsScreenState extends State<SettingsScreen> {
               // Notification Preferences
               Text(
                 'Notification Preferences',
-                style: AppTextStyles.heading3.copyWith(fontFamily: 'Montserrat'),
+                style: AppTextStyles.heading3.copyWith(
+                  fontFamily: 'Montserrat',
+                ),
               ),
               const SizedBox(height: 12),
               Card(
                 child: Column(
-                  children: projectProvider.userProjects
-                      .map(
-                        (project) => SwitchListTile(
-                          title: Text(
-                            project.name,
-                            style: AppTextStyles.bodyMedium.copyWith(fontFamily: 'Montserrat'),
-                          ),
-                          value: _projectNotifPrefs[project.id] ?? true,
-                          onChanged: (value) => _saveNotifPref(project.id, value),
-                          activeColor: AppColors.primary,
-                        ),
-                      )
-                      .toList(),
+                  children:
+                      projectProvider.userProjects
+                          .map(
+                            (project) => SwitchListTile(
+                              title: Text(
+                                project.name,
+                                style: AppTextStyles.bodyMedium.copyWith(
+                                  fontFamily: 'Montserrat',
+                                ),
+                              ),
+                              value: _projectNotifPrefs[project.id] ?? true,
+                              onChanged:
+                                  (value) => _saveNotifPref(project.id, value),
+                              activeColor: AppColors.primary,
+                            ),
+                          )
+                          .toList(),
                 ),
               ),
               const SizedBox(height: 24),
               // Theme
               Text(
                 'Appearance',
-                style: AppTextStyles.heading3.copyWith(fontFamily: 'Montserrat'),
+                style: AppTextStyles.heading3.copyWith(
+                  fontFamily: 'Montserrat',
+                ),
               ),
               const SizedBox(height: 12),
               Card(
                 child: SwitchListTile(
                   title: Text(
                     'Dark Mode',
-                    style: AppTextStyles.bodyMedium.copyWith(fontFamily: 'Montserrat'),
+                    style: AppTextStyles.bodyMedium.copyWith(
+                      fontFamily: 'Montserrat',
+                    ),
                   ),
                   value: _isDarkMode,
                   onChanged: _saveThemePref,

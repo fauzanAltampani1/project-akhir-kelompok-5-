@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
 import '../../../data/models/project_model.dart';
 import '../../../data/models/user_model.dart';
-import '../../../data/models/thread_model.dart';
-import '../../thread/providers/thread_provider.dart';
-import '../helpers/thread_integration_help.dart';
+import '../../../core/network/api_client.dart';
+import '../../../core/utils/logger.dart';
 
 enum ProjectLoadingState { idle, loading, success, error }
 
@@ -33,22 +32,14 @@ class CreateProjectRequest {
 }
 
 class ProjectProvider with ChangeNotifier {
+  final ApiClient _apiClient = ApiClient();
   List<ProjectModel> _projects = [];
   ProjectLoadingState _loadingState = ProjectLoadingState.idle;
-  String? _errorMessage;
-  ThreadProvider? _threadProvider;
-
-  // Getters
+  String? _errorMessage; // Getters
   List<ProjectModel> get projects => _projects;
   ProjectLoadingState get loadingState => _loadingState;
   String? get errorMessage => _errorMessage;
   bool get isLoading => _loadingState == ProjectLoadingState.loading;
-
-  // CRITICAL: Setter untuk ThreadProvider (dependency injection)
-  void setThreadProvider(ThreadProvider threadProvider) {
-    _threadProvider = threadProvider;
-    print('🔧 ProjectProvider: ThreadProvider dependency injected');
-  }
 
   // Get projects where current user is member
   List<ProjectModel> get userProjects {
@@ -73,25 +64,24 @@ class ProjectProvider with ChangeNotifier {
     _setLoadingState(ProjectLoadingState.loading);
 
     try {
-      // TODO: Implement actual API call
-      // final response = await _apiService.get('/projects');
-      // final projectsData = response.data as List;
-      // _projects = projectsData.map((json) => ProjectModel.fromJson(json)).toList();
+      final response = await _apiClient.get('/projects');
+      if (response['status'] == 'error') {
+        throw Exception(response['message']);
+      }
 
-      // Simulation: delay untuk mimic network request
-      await Future.delayed(const Duration(milliseconds: 500));
-
-      // For now, use dummy data
-      _projects = ProjectModel.dummyProjects;
+      final List<dynamic> projectsData = response is List ? response : [];
+      _projects =
+          projectsData.map((json) => ProjectModel.fromJson(json)).toList();
 
       _setLoadingState(ProjectLoadingState.success);
-      print(
-        '🔧 ProjectProvider: Projects fetched successfully (${_projects.length} projects)',
+      Logger.s(
+        'ProjectProvider',
+        'Projects fetched successfully (${_projects.length} projects)',
       );
     } catch (e) {
       _setLoadingState(ProjectLoadingState.error);
       _errorMessage = 'Failed to fetch projects: $e';
-      print('❌ ProjectProvider: Failed to fetch projects: $e');
+      Logger.e('ProjectProvider', 'Failed to fetch projects: $e');
     }
   }
 
@@ -100,80 +90,103 @@ class ProjectProvider with ChangeNotifier {
     _setLoadingState(ProjectLoadingState.loading);
 
     try {
-      // TODO: Implement actual API call
-      // final response = await _apiService.post('/projects', data: request.toJson());
-      // final newProject = ProjectModel.fromJson(response.data);
-
-      print('🔧 ProjectProvider: Creating project "${request.name}"...');
-
-      // Simulation: Create project locally
-      final newProjectId = DateTime.now().millisecondsSinceEpoch.toString();
       final currentUser = UserModel.currentUser;
+      final projectData = {
+        ...request.toJson(),
+        'creator_id': currentUser.id,
+        'created_at': DateTime.now().toIso8601String(),
+        'updated_at': DateTime.now().toIso8601String(),
+        'task_count': 0,
+        'thread_count': 0,
+        'status': 'active',
+      };
 
-      // Create project members list
-      final members = <ProjectMember>[];
-
-      // Add creator as admin
-      members.add(
-        ProjectMember(
-          userId: currentUser.id,
-          user: currentUser,
-          role: ProjectRole.admin,
-          joinedAt: DateTime.now(),
-        ),
-      );
-
-      // Add other members
-      for (final memberId in request.memberIds) {
-        if (memberId != currentUser.id) {
-          final user = _getDummyUser(memberId);
-          final role = request.memberRoles[memberId] ?? ProjectRole.member;
-
-          members.add(
-            ProjectMember(
-              userId: memberId,
-              user: user,
-              role: role,
-              joinedAt: DateTime.now(),
-            ),
-          );
-        }
+      final response = await _apiClient.post('/projects', projectData);
+      if (response['status'] == 'error') {
+        throw Exception(response['message']);
       }
 
-      final newProject = ProjectModel(
-        id: newProjectId,
-        name: request.name,
-        description: request.description,
-        creatorId: currentUser.id,
-        creator: currentUser,
-        members: members,
-        taskCount: 0,
-        threadCount: 0,
-        status: ProjectStatus.active,
-        createdAt: DateTime.now(),
-        updatedAt: DateTime.now(),
-        threadId: 'project-$newProjectId',
+      await fetchProjects(); // Refresh the projects list
+      final newProject = _projects.firstWhere(
+        (p) => p.creatorId == currentUser.id && p.name == request.name,
+        orElse: () => throw Exception('Project creation failed'),
       );
-
-      // Add to local list
-      _projects.add(newProject);
-
-      // CRITICAL: Auto-create project thread using ThreadIntegrationHelper
-      await _createProjectThread(newProject);
 
       _setLoadingState(ProjectLoadingState.success);
-      _errorMessage = null;
-
-      print(
-        '✅ ProjectProvider: Project "${newProject.name}" created successfully with ID: ${newProject.id}',
+      Logger.s(
+        'ProjectProvider',
+        'Project "${request.name}" created successfully',
       );
-
       return newProject;
     } catch (e) {
       _setLoadingState(ProjectLoadingState.error);
       _errorMessage = 'Failed to create project: $e';
-      print('❌ ProjectProvider: Failed to create project: $e');
+      Logger.e('ProjectProvider', 'Failed to create project: $e');
       return null;
+    }
+  }
+
+  /// Delete project
+  Future<bool> deleteProject(String projectId) async {
+    try {
+      final response = await _apiClient.delete('/projects', {'id': projectId});
+      if (response['status'] == 'error') {
+        throw Exception(response['message']);
+      }
+
+      _projects.removeWhere((p) => p.id == projectId);
+      notifyListeners();
+
+      Logger.s('ProjectProvider', 'Project deleted successfully');
+      return true;
+    } catch (e) {
+      _errorMessage = 'Failed to delete project: $e';
+      Logger.e('ProjectProvider', 'Failed to delete project: $e');
+      return false;
+    }
+  }
+
+  /// Get a project by its ID
+  ProjectModel? getProjectById(String projectId) {
+    try {
+      return _projects.firstWhere((p) => p.id == projectId);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  /// Update project details with proper error handling
+  Future<bool> updateProject(
+    String projectId,
+    Map<String, dynamic> updates,
+  ) async {
+    try {
+      final data = {
+        'id': projectId,
+        ...updates,
+        'updated_at': DateTime.now().toIso8601String(),
+      };
+
+      final response = await _apiClient.put('/projects', data);
+      if (response['status'] == 'error') {
+        throw Exception(response['message']);
+      }
+
+      final index = _projects.indexWhere((p) => p.id == projectId);
+      if (index != -1) {
+        _projects[index] = ProjectModel.fromJson({
+          ..._projects[index].toJson(),
+          ...updates,
+        });
+        notifyListeners();
+      }
+
+      Logger.s('ProjectProvider', 'Project updated successfully');
+      return true;
+    } catch (e) {
+      _errorMessage = 'Failed to update project: $e';
+      Logger.e('ProjectProvider', 'Failed to update project: $e');
+      return false;
     }
   }
 
@@ -184,43 +197,27 @@ class ProjectProvider with ChangeNotifier {
     ProjectRole role,
   ) async {
     try {
-      final projectIndex = _projects.indexWhere((p) => p.id == projectId);
-      if (projectIndex != -1) {
-        final project = _projects[projectIndex];
-        final user = _getDummyUser(userId);
+      final data = {
+        'project_id': projectId,
+        'user_id': userId,
+        'role': role.toString().split('.').last,
+        'joined_at': DateTime.now().toIso8601String(),
+      };
 
-        final newMember = ProjectMember(
-          userId: userId,
-          user: user,
-          role: role,
-          joinedAt: DateTime.now(),
-        );
-
-        final updatedMembers = List<ProjectMember>.from(project.members)
-          ..add(newMember);
-
-        _projects[projectIndex] = project.copyWith(
-          members: updatedMembers,
-          updatedAt: DateTime.now(),
-        );
-
-        // ADDED: Update thread members using ThreadIntegrationHelper
-        if (_threadProvider != null) {
-          await ThreadIntegrationHelper.addMemberToProjectThreads(
-            projectId: projectId,
-            newMember: newMember,
-            threadProvider: _threadProvider!,
-          );
-        }
-
-        notifyListeners();
-        return true;
+      final response = await _apiClient.post(
+        '/projects/$projectId/members',
+        data,
+      );
+      if (response['status'] == 'error') {
+        throw Exception(response['message']);
       }
 
-      return false;
+      await fetchProjects(); // Refresh to get updated member list
+      Logger.s('ProjectProvider', 'Member added to project successfully');
+      return true;
     } catch (e) {
       _errorMessage = 'Failed to add member: $e';
-      notifyListeners();
+      Logger.e('ProjectProvider', 'Failed to add member: $e');
       return false;
     }
   }
@@ -228,214 +225,89 @@ class ProjectProvider with ChangeNotifier {
   /// Remove member from project
   Future<bool> removeMemberFromProject(String projectId, String userId) async {
     try {
-      final projectIndex = _projects.indexWhere((p) => p.id == projectId);
-      if (projectIndex != -1) {
-        final project = _projects[projectIndex];
-
-        final updatedMembers =
-            project.members.where((member) => member.userId != userId).toList();
-
-        _projects[projectIndex] = project.copyWith(
-          members: updatedMembers,
-          updatedAt: DateTime.now(),
-        );
-
-        // ADDED: Remove from thread members using ThreadIntegrationHelper
-        if (_threadProvider != null) {
-          await ThreadIntegrationHelper.removeMemberFromProjectThreads(
-            projectId: projectId,
-            userId: userId,
-            threadProvider: _threadProvider!,
-          );
-        }
-
-        notifyListeners();
-        return true;
+      final response = await _apiClient.delete('/projects/$projectId/members', {
+        'user_id': userId,
+      });
+      if (response['status'] == 'error') {
+        throw Exception(response['message']);
       }
 
-      return false;
-    } catch (e) {
-      _errorMessage = 'Failed to remove member: $e';
-      notifyListeners();
-      return false;
-    }
-  }
-
-  /// Update project details
-  Future<bool> updateProject(
-    String projectId, {
-    String? name,
-    String? description,
-    ProjectStatus? status,
-    String? threadId,
-    int? threadCount,
-    int? taskCount,
-  }) async {
-    try {
-      final projectIndex = _projects.indexWhere((p) => p.id == projectId);
-      if (projectIndex != -1) {
-        final project = _projects[projectIndex];
-
-        _projects[projectIndex] = project.copyWith(
-          name: name ?? project.name,
-          description: description ?? project.description,
-          status: status ?? project.status,
-          threadId: threadId ?? project.threadId,
-          threadCount: threadCount ?? project.threadCount,
-          taskCount: taskCount ?? project.taskCount,
-          updatedAt: DateTime.now(),
-        );
-
-        notifyListeners();
-        return true;
-      }
-
-      return false;
-    } catch (e) {
-      _errorMessage = 'Failed to update project: $e';
-      notifyListeners();
-      return false;
-    }
-  }
-
-  /// Delete project
-  Future<bool> deleteProject(String projectId) async {
-    try {
-      // ADDED: Delete project threads using ThreadIntegrationHelper
-      if (_threadProvider != null) {
-        await ThreadIntegrationHelper.deleteProjectThreads(
-          projectId: projectId,
-          threadProvider: _threadProvider!,
-        );
-      }
-
-      _projects.removeWhere((project) => project.id == projectId);
-      notifyListeners();
+      await fetchProjects(); // Refresh to get updated member list
+      Logger.s('ProjectProvider', 'Member removed from project successfully');
       return true;
     } catch (e) {
-      _errorMessage = 'Failed to delete project: $e';
-      notifyListeners();
+      _errorMessage = 'Failed to remove member: $e';
+      Logger.e('ProjectProvider', 'Failed to remove member: $e');
       return false;
     }
   }
 
-  /// Get project by ID dengan improved error handling
-  ProjectModel? getProjectById(String projectId) {
+  /// Update member role in project
+  Future<bool> updateMemberRole(
+    String projectId,
+    String userId,
+    ProjectRole newRole,
+  ) async {
     try {
-      // IMPROVED: Trim whitespace dan explicit empty check
-      final trimmedId = projectId.trim();
+      final data = {
+        'user_id': userId,
+        'role': newRole.toString().split('.').last,
+      };
 
-      if (trimmedId.isEmpty) {
-        // HANYA LOG DI DEBUG MODE dan lebih informatif
-        assert(() {
-          print('⚠️ ProjectProvider: getProjectById called with empty ID');
-          print(
-            '📍 Available projects: ${_projects.map((p) => '${p.id}:${p.name}').join(', ')}',
-          );
-          return true;
-        }());
-        return null;
+      final response = await _apiClient.put(
+        '/projects/$projectId/members',
+        data,
+      );
+      if (response['status'] == 'error') {
+        throw Exception(response['message']);
       }
 
-      return _projects.firstWhere((project) => project.id == trimmedId);
+      await fetchProjects(); // Refresh to get updated member roles
+      Logger.s('ProjectProvider', 'Member role updated successfully');
+      return true;
     } catch (e) {
-      // IMPROVED: Lebih detailed logging untuk debugging
-      assert(() {
-        print('⚠️ ProjectProvider: Project with ID "$projectId" not found');
-        print(
-          '📍 Available projects: ${_projects.map((p) => '${p.id}:${p.name}').join(', ')}',
-        );
-        print('📍 Search attempted for: "${projectId.trim()}"');
-        return true;
-      }());
-      return null;
+      _errorMessage = 'Failed to update member role: $e';
+      Logger.e('ProjectProvider', 'Failed to update member role: $e');
+      return false;
     }
   }
 
-  // Private helper methods
-
-  void _setLoadingState(ProjectLoadingState state) {
-    _loadingState = state;
-    notifyListeners();
-  }
-
-  /// CRITICAL: Auto-create thread when project is created
-  Future<void> _createProjectThread(ProjectModel project) async {
-    if (_threadProvider == null) {
-      print(
-        '❌ ProjectProvider: ThreadProvider not available for creating project thread',
-      );
-      return;
-    }
-
-    try {
-      print(
-        '🔧 ProjectProvider: Creating thread for project "${project.name}"...',
-      );
-
-      // Use ThreadIntegrationHelper to create project thread
-      final createdThread = await ThreadIntegrationHelper.createProjectThread(
-        project: project,
-        threadProvider: _threadProvider!,
-      );
-
-      print(
-        '✅ ProjectProvider: Project thread created successfully: ${createdThread.name}',
-      );
-
-      // Send welcome message
-      await ThreadIntegrationHelper.sendWelcomeMessage(
-        project: project,
-        threadProvider: _threadProvider!,
-      );
-
-      // Update project with threadId
-      updateProject(
-        project.id,
-        threadId: createdThread.id,
-        threadCount: (project.threadCount ?? 0) + 1,
-      );
-    } catch (e) {
-      print('❌ ProjectProvider: Failed to create project thread: $e');
-      // Don't fail project creation if thread creation fails
-    }
-  }
-
-  /// Get dummy user data (TODO: Replace with actual backend call)
-  UserModel _getDummyUser(String userId) {
-    switch (userId) {
-      case '2':
-        return UserModel(id: '2', name: 'King', email: 'king@example.com');
-      case '3':
-        return UserModel(id: '3', name: 'Alice', email: 'alice@example.com');
-      case '4':
-        return UserModel(id: '4', name: 'Bob', email: 'bob@example.com');
-      default:
-        return UserModel(
-          id: userId,
-          name: 'User $userId',
-          email: 'user$userId@example.com',
-        );
-    }
-  }
-
-  /// Clear error message
+  /// Clear any error message
   void clearError() {
     _errorMessage = null;
     notifyListeners();
   }
 
-  /// Refresh projects
-  Future<void> refreshProjects() async {
-    await fetchProjects();
+  /// Updates a project in the backend and refreshes local data
+  Future<void> updateAndRefresh(ProjectModel project) async {
+    try {
+      await _apiClient.put('/projects', {
+        'id': project.id,
+        'name': project.name,
+        'description': project.description,
+        'task_count': project.taskCount,
+        'thread_count': project.threadCount,
+        'status': project.status.toString().split('.').last,
+        'updated_at': project.updatedAt.toIso8601String(),
+      });
+
+      // Update local project list
+      final index = _projects.indexWhere((p) => p.id == project.id);
+      if (index != -1) {
+        _projects[index] = project;
+        notifyListeners();
+      }
+
+      Logger.s('ProjectProvider', 'Project updated and refreshed successfully');
+    } catch (e) {
+      _errorMessage = 'Failed to update project: $e';
+      Logger.e('ProjectProvider', 'Failed to update project: $e');
+      rethrow;
+    }
   }
 
-  // TAMBAH: Method untuk debugging project IDs
-  void debugProjectIds() {
-    print('🔍 ProjectProvider Debug Info:');
-    print('   Total projects: ${_projects.length}');
-    for (var project in _projects) {
-      print('   - ID: "${project.id}" | Name: "${project.name}"');
-    }
+  void _setLoadingState(ProjectLoadingState state) {
+    _loadingState = state;
+    notifyListeners();
   }
 }

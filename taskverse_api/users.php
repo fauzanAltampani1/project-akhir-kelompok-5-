@@ -14,7 +14,9 @@ try {
     $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
     $method = $_SERVER['REQUEST_METHOD'];
-    if ($method == 'OPTIONS') { exit; }
+    if ($method == 'OPTIONS') {
+        exit;
+    }
 
     // GET: List all users or get by id
     if ($method == 'GET') {
@@ -43,19 +45,22 @@ try {
         ]);
         echo json_encode(['status' => 'success']);
         exit;
-    }
-
-    // PUT: Update user (except password)
+    }    // PUT: Update user (except password)
     if ($method == 'PUT') {
-        parse_str(file_get_contents("php://input"), $data);
-        $stmt = $conn->prepare("UPDATE users SET name=?, email=?, avatar_url=? WHERE id=?");
+        $data = json_decode(file_get_contents('php://input'), true);
+        $userId = basename(parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH));
+        $stmt = $conn->prepare("UPDATE users SET name=?, avatar_url=? WHERE id=?");
         $stmt->execute([
             $data['name'],
-            $data['email'],
             $data['avatar_url'] ?? null,
-            $data['id']
+            $userId
         ]);
-        echo json_encode(['status' => 'success']);
+
+        // Get updated user data
+        $stmt = $conn->prepare("SELECT id, name, email, avatar_url FROM users WHERE id = ?");
+        $stmt->execute([$userId]);
+        $user = $stmt->fetch(PDO::FETCH_ASSOC);
+        echo json_encode(['status' => 'success', 'data' => $user]);
         exit;
     }
 

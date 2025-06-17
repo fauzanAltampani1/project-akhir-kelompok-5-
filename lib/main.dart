@@ -7,6 +7,7 @@ import 'features/taskroom/providers/task_provider.dart';
 import 'features/thread/providers/thread_provider.dart';
 import 'features/taskroom/providers/project_provider.dart';
 import 'features/taskroom/providers/project_task_provider.dart';
+import 'features/profile/providers/notification_provider.dart';
 import 'app.dart';
 
 void main() {
@@ -20,6 +21,7 @@ void main() {
         ChangeNotifierProvider(create: (_) => ThreadProvider()),
         ChangeNotifierProvider(create: (_) => ProjectTaskProvider()),
         ChangeNotifierProvider(create: (_) => AuthProvider()),
+        ChangeNotifierProvider(create: (_) => NotificationProvider()),
       ],
       child: const TaskVerseApp(),
     ),
