@@ -1,4 +1,20 @@
 {
   "java.configuration.updateBuildConfiguration": "interactive",
-  "cmake.sourceDirectory": "E:/Programing/Flutter/project-akhir-kelompok-5/linux"
+  "cmake.sourceDirectory": "E:/Programing/Flutter/project-akhir-kelompok-5/linux",
+  "sqltools.connections": [
+    {
+      "mysqlOptions": {
+        "authProtocol": "default",
+        "enableSsl": "Disabled"
+      },
+      "previewLimit": 50,
+      "server": "localhost",
+      "port": 3306,
+      "driver": "MySQL",
+      "name": "project-akhir-kelompok-5-",
+      "database": "taskverse_db",
+      "username": "root",
+      "password": ""
+    }
+  ]
 }

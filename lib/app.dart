@@ -8,6 +8,7 @@ import 'features/taskroom/screens/taskroom_screen.dart';
 import 'features/thread/screens/thread_screen.dart';
 import 'features/profile/screens/profile_screen.dart';
 import 'providers/navigation_provider.dart';
+import 'providers/loading_state_provider.dart';
 import 'features/home/providers/home_provider.dart';
 import 'features/taskroom/providers/task_provider.dart';
 import 'features/taskroom/providers/project_provider.dart'; // NEW
@@ -27,6 +28,7 @@ import 'features/profile/screens/notifications_screen.dart';
 import 'features/profile/screens/settings_screen.dart';
 import 'config/app_scroll_behavior.dart';
 import 'features/auth/providers/auth_provider.dart';
+
 class TaskVerseApp extends StatefulWidget {
   const TaskVerseApp({super.key});
 
@@ -41,34 +43,73 @@ class _TaskVerseAppState extends State<TaskVerseApp> {
     // Jadwalkan cek daily reset untuk daily tasks
     WidgetsBinding.instance.addPostFrameCallback((_) {
       // Perlu runlater karena provider belum tersedia di initState
-      Future.microtask(() async{
+      Future.microtask(() async {
         final taskProvider = Provider.of<TaskProvider>(context, listen: false);
-        final projectProvider = Provider.of<ProjectProvider>(context, listen: false); // NEW
-        final threadProvider = Provider.of<ThreadProvider>(context, listen: false);
-        final projectTaskProvider = Provider.of<ProjectTaskProvider>(context, listen: false);
+        final projectProvider = Provider.of<ProjectProvider>(
+          context,
+          listen: false,
+        );
+        final threadProvider = Provider.of<ThreadProvider>(
+          context,
+          listen: false,
+        );
+        final projectTaskProvider = Provider.of<ProjectTaskProvider>(
+          context,
+          listen: false,
+        );
         final authProvider = Provider.of<AuthProvider>(context, listen: false);
+        final loadingStateProvider = Provider.of<LoadingStateProvider>(
+          context,
+          listen: false,
+        );
+        final homeProvider = Provider.of<HomeProvider>(
+          context,
+          listen: false,
+        ); // Connect loading state provider to other providers
+        projectProvider.setLoadingStateProvider(loadingStateProvider);
+        homeProvider.setLoadingStateProvider(loadingStateProvider);
+        taskProvider.setLoadingStateProvider(
+          loadingStateProvider,
+        ); // Cek auth status
+        loadingStateProvider.setModuleLoading(
+          'auth',
+          message: 'Checking authentication status...',
+        );
+        await authProvider
+            .checkAuthStatus(); // Let the splash screen handle navigation
+        loadingStateProvider.setModuleLoaded('auth');
 
-        // Cek auth status
-        final isLoggedIn = await authProvider.checkAuthStatus();
-        if (isLoggedIn && mounted) {
-          Navigator.pushReplacementNamed(context, '/home');
-        }
         // Initialize task provider
+        loadingStateProvider.setModuleLoading(
+          'tasks',
+          message: 'Initializing tasks...',
+        );
         taskProvider.checkDailyReset();
         taskProvider.scheduleMidnightCleanup();
-        
-        // Initialize project provider  // NEW
-        projectProvider.setThreadProvider(threadProvider); // NEW
-        projectProvider.fetchProjects(); // NEW
+        loadingStateProvider.setModuleLoaded('tasks');
+
+        // Initialize project provider
+        loadingStateProvider.setModuleLoading(
+          'projects',
+          message: 'Initializing projects...',
+        );
+        projectProvider.setThreadProvider(threadProvider);
+        await projectProvider.fetchProjects();
         projectTaskProvider.setProjectProvider(projectProvider);
-      
+        loadingStateProvider.setModuleLoaded('projects');
+
         // Initialize thread provider
-        threadProvider.fetchThreads();
+        loadingStateProvider.setModuleLoading(
+          'threads',
+          message: 'Initializing threads...',
+        );
+        await threadProvider.fetchThreads();
+        loadingStateProvider.setModuleLoaded('threads');
       });
     });
   }
 
-    @override
+  @override
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'TaskVerse',
@@ -88,12 +129,15 @@ class _TaskVerseAppState extends State<TaskVerseApp> {
         '/personal-task': (context) => const PersonalTaskScreen(),
         '/create-task': (context) => const CreateTaskScreen(),
         '/create-project': (context) => const CreateProjectScreen(),
-        '/create-task-in-project': (context) => const CreateTaskInProjectScreen(), // NEW
+        '/create-task-in-project':
+            (context) => const CreateTaskInProjectScreen(), // NEW
         '/edit-task-in-project': (context) => const EditTaskInProjectScreen(),
         '/settings': (context) => const SettingsScreen(),
         '/notifications': (context) => const NotificationsScreen(), // NEW
-        '/project-settings': (context) => ProjectSettingsScreen(
-    projectId: ModalRoute.of(context)!.settings.arguments as String),
+        '/project-settings':
+            (context) => ProjectSettingsScreen(
+              projectId: ModalRoute.of(context)!.settings.arguments as String,
+            ),
       },
       onGenerateRoute: (settings) {
         // CRITICAL: Handle dynamic routes with parameters

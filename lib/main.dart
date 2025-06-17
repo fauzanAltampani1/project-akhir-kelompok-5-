@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'providers/navigation_provider.dart';
+import 'providers/loading_state_provider.dart'; // Add loading state provider
 import 'features/auth/providers/auth_provider.dart';
 import 'features/home/providers/home_provider.dart';
 import 'features/taskroom/providers/task_provider.dart';
@@ -14,6 +15,9 @@ void main() {
   runApp(
     MultiProvider(
       providers: [
+        ChangeNotifierProvider(
+          create: (_) => LoadingStateProvider(),
+        ), // Added first so other providers can access it
         ChangeNotifierProvider(create: (_) => NavigationProvider()),
         ChangeNotifierProvider(create: (_) => HomeProvider()),
         ChangeNotifierProvider(create: (_) => TaskProvider()),

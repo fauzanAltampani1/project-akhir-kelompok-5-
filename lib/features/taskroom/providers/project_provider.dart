@@ -3,6 +3,8 @@ import '../../../data/models/project_model.dart';
 import '../../../data/models/user_model.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/utils/logger.dart';
+import '../../../providers/loading_state_provider.dart';
+import '../../thread/providers/thread_provider.dart'; // Added import for ThreadProvider
 
 enum ProjectLoadingState { idle, loading, success, error }
 
@@ -35,11 +37,28 @@ class ProjectProvider with ChangeNotifier {
   final ApiClient _apiClient = ApiClient();
   List<ProjectModel> _projects = [];
   ProjectLoadingState _loadingState = ProjectLoadingState.idle;
-  String? _errorMessage; // Getters
+  String? _errorMessage;
+  ThreadProvider? _threadProvider; // Added field for ThreadProvider
+  LoadingStateProvider? _loadingStateProvider;
+
+  // Getters
   List<ProjectModel> get projects => _projects;
   ProjectLoadingState get loadingState => _loadingState;
   String? get errorMessage => _errorMessage;
   bool get isLoading => _loadingState == ProjectLoadingState.loading;
+
+  // Setter for LoadingStateProvider
+  void setLoadingStateProvider(LoadingStateProvider provider) {
+    _loadingStateProvider = provider;
+    notifyListeners();
+  }
+
+  // Set the thread provider
+  void setThreadProvider(ThreadProvider provider) {
+    _threadProvider = provider;
+    Logger.i('ProjectProvider', 'ThreadProvider has been set');
+    notifyListeners();
+  }
 
   // Get projects where current user is member
   List<ProjectModel> get userProjects {
@@ -58,10 +77,17 @@ class ProjectProvider with ChangeNotifier {
   }
 
   // Backend integration ready methods
-
   /// Fetch projects from backend
   Future<void> fetchProjects() async {
     _setLoadingState(ProjectLoadingState.loading);
+
+    // Update global loading state if available
+    if (_loadingStateProvider != null) {
+      _loadingStateProvider!.setModuleLoading(
+        'projects',
+        message: 'Fetching projects...',
+      );
+    }
 
     try {
       final response = await _apiClient.get('/projects');
@@ -74,6 +100,15 @@ class ProjectProvider with ChangeNotifier {
           projectsData.map((json) => ProjectModel.fromJson(json)).toList();
 
       _setLoadingState(ProjectLoadingState.success);
+
+      // Update global loading state if available
+      if (_loadingStateProvider != null) {
+        _loadingStateProvider!.setModuleLoaded(
+          'projects',
+          message: 'Projects loaded successfully',
+        );
+      }
+
       Logger.s(
         'ProjectProvider',
         'Projects fetched successfully (${_projects.length} projects)',
@@ -81,6 +116,15 @@ class ProjectProvider with ChangeNotifier {
     } catch (e) {
       _setLoadingState(ProjectLoadingState.error);
       _errorMessage = 'Failed to fetch projects: $e';
+
+      // Update global loading state if available
+      if (_loadingStateProvider != null) {
+        _loadingStateProvider!.setModuleError(
+          'projects',
+          message: 'Failed to fetch projects: $e',
+        );
+      }
+
       Logger.e('ProjectProvider', 'Failed to fetch projects: $e');
     }
   }

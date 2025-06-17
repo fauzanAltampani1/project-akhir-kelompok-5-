@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:flutter/animation.dart' show CurvedAnimation, AnimationController;
+import 'package:flutter/animation.dart'
+    show CurvedAnimation, AnimationController;
 import 'package:flutter/scheduler.dart' show TickerProvider;
 import '../../../config/themes/app_colors.dart';
 import '../../../config/themes/app_text_styles.dart';
 import '../../../data/models/user_model.dart';
+import '../../../providers/loading_state_provider.dart';
 import '../../taskroom/providers/project_provider.dart';
 
 class ProjectListWidget extends StatefulWidget {
@@ -14,7 +16,8 @@ class ProjectListWidget extends StatefulWidget {
   _ProjectListWidgetState createState() => _ProjectListWidgetState();
 }
 
-class _ProjectListWidgetState extends State<ProjectListWidget> with TickerProviderStateMixin {
+class _ProjectListWidgetState extends State<ProjectListWidget>
+    with TickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<double> _animation;
 
@@ -35,52 +38,71 @@ class _ProjectListWidgetState extends State<ProjectListWidget> with TickerProvid
     super.dispose();
   }
 
-  void _handleProjectAction(BuildContext context, String projectId, String projectName) {
-    final projectProvider = Provider.of<ProjectProvider>(context, listen: false);
+  void _handleProjectAction(
+    BuildContext context,
+    String projectId,
+    String projectName,
+  ) {
+    final projectProvider = Provider.of<ProjectProvider>(
+      context,
+      listen: false,
+    );
     final project = projectProvider.getProjectById(projectId);
-    final isAdmin = project != null && project.isUserAdmin(UserModel.currentUser.id);
+    final isAdmin =
+        project != null && project.isUserAdmin(UserModel.currentUser.id);
 
     if (isAdmin) {
       showDialog(
         context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('Delete Project'),
-          content: Text('Are you sure you want to delete "$projectName"?'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel'),
+        builder:
+            (context) => AlertDialog(
+              title: const Text('Delete Project'),
+              content: Text('Are you sure you want to delete "$projectName"?'),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Cancel'),
+                ),
+                TextButton(
+                  onPressed: () {
+                    projectProvider.deleteProject(projectId);
+                    Navigator.pop(context);
+                  },
+                  child: const Text(
+                    'Delete',
+                    style: TextStyle(color: Colors.red),
+                  ),
+                ),
+              ],
             ),
-            TextButton(
-              onPressed: () {
-                projectProvider.deleteProject(projectId);
-                Navigator.pop(context);
-              },
-              child: const Text('Delete', style: TextStyle(color: Colors.red)),
-            ),
-          ],
-        ),
       );
     } else {
       showDialog(
         context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('Leave Project'),
-          content: Text('Are you sure you want to leave "$projectName"?'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel'),
+        builder:
+            (context) => AlertDialog(
+              title: const Text('Leave Project'),
+              content: Text('Are you sure you want to leave "$projectName"?'),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Cancel'),
+                ),
+                TextButton(
+                  onPressed: () {
+                    projectProvider.removeMemberFromProject(
+                      projectId,
+                      UserModel.currentUser.id,
+                    );
+                    Navigator.pop(context);
+                  },
+                  child: const Text(
+                    'Leave',
+                    style: TextStyle(color: Colors.red),
+                  ),
+                ),
+              ],
             ),
-            TextButton(
-              onPressed: () {
-                projectProvider.removeMemberFromProject(projectId, UserModel.currentUser.id);
-                Navigator.pop(context);
-              },
-              child: const Text('Leave', style: TextStyle(color: Colors.red)),
-            ),
-          ],
-        ),
       );
     }
   }
@@ -106,48 +128,70 @@ class _ProjectListWidgetState extends State<ProjectListWidget> with TickerProvid
                       children: const [
                         Icon(Icons.folder, color: AppColors.primary, size: 20),
                         SizedBox(width: 8),
-                        Text('Your Project List', style: AppTextStyles.heading3),
+                        Text(
+                          'Your Project List',
+                          style: AppTextStyles.heading3,
+                        ),
                       ],
                     ),
                   ],
                 ),
                 const SizedBox(height: 16),
-                
+
                 if (projectProvider.isLoading)
                   const SizedBox(
-                    height: 150,
+                    height: 80,
                     child: Center(
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
+                        mainAxisSize: MainAxisSize.min,
                         children: [
-                          CircularProgressIndicator(),
-                          SizedBox(height: 12),
-                          Text('Loading projects...'),
+                          const SizedBox(
+                            height: 20,
+                            width: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2.0),
+                          ),
+                          const SizedBox(height: 6),
+                          const Text(
+                            'Loading projects...',
+                            style: TextStyle(fontSize: 12),
+                          ),
                         ],
                       ),
                     ),
                   )
                 else if (projectProvider.errorMessage != null)
                   SizedBox(
-                    height: 150,
+                    height: 80,
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
+                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        const Icon(Icons.error_outline, size: 48, color: Colors.red),
-                        const SizedBox(height: 12),
+                        const Icon(
+                          Icons.error_outline,
+                          size: 24,
+                          color: Colors.red,
+                        ),
+                        const SizedBox(height: 2),
                         Text(
                           'Failed to load projects',
-                          style: TextStyle(fontWeight: FontWeight.bold, color: Colors.red),
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12,
+                            color: Colors.red,
+                          ),
                         ),
-                        const SizedBox(height: 8),
                         Text(
                           projectProvider.errorMessage!,
                           textAlign: TextAlign.center,
-                          style: TextStyle(fontSize: 12, color: Colors.red[700]),
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: Colors.red[700],
+                          ),
                         ),
-                        const SizedBox(height: 16),
+                        const SizedBox(height: 4),
                         ElevatedButton(
-                          onPressed: () => projectProvider.refreshProjects(),
+                          onPressed: () => projectProvider.fetchProjects(),
                           child: const Text('Retry'),
                         ),
                       ],
@@ -157,7 +201,7 @@ class _ProjectListWidgetState extends State<ProjectListWidget> with TickerProvid
                   Column(
                     children: [
                       SizedBox(
-                        height: 200,
+                        height: 160,
                         child: ListView.builder(
                           shrinkWrap: true,
                           physics: const AlwaysScrollableScrollPhysics(),
@@ -177,7 +221,10 @@ class _ProjectListWidgetState extends State<ProjectListWidget> with TickerProvid
                                     const Icon(Icons.assignment, size: 16),
                                     Text(' ${project.taskCount} Task'),
                                     const SizedBox(width: 16),
-                                    const Icon(Icons.chat_bubble_outline, size: 16),
+                                    const Icon(
+                                      Icons.chat_bubble_outline,
+                                      size: 16,
+                                    ),
                                     Text(' ${project.threadCount} Thread'),
                                   ],
                                 ),
@@ -185,40 +232,67 @@ class _ProjectListWidgetState extends State<ProjectListWidget> with TickerProvid
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
                                     Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 6,
+                                        vertical: 2,
+                                      ),
                                       decoration: BoxDecoration(
-                                        color: project.isUserAdmin(UserModel.currentUser.id)
-                                            ? AppColors.primary.withOpacity(0.1)
-                                            : AppColors.secondary.withOpacity(0.1),
+                                        color:
+                                            project.isUserAdmin(
+                                                  UserModel.currentUser.id,
+                                                )
+                                                ? AppColors.primary.withOpacity(
+                                                  0.1,
+                                                )
+                                                : AppColors.secondary
+                                                    .withOpacity(0.1),
                                         borderRadius: BorderRadius.circular(8),
                                       ),
                                       child: Text(
-                                        project.isUserAdmin(UserModel.currentUser.id) ? 'Admin' : 'Member',
+                                        project.isUserAdmin(
+                                              UserModel.currentUser.id,
+                                            )
+                                            ? 'Admin'
+                                            : 'Member',
                                         style: TextStyle(
                                           fontSize: 10,
                                           fontWeight: FontWeight.bold,
-                                          color: project.isUserAdmin(UserModel.currentUser.id)
-                                              ? AppColors.primary
-                                              : AppColors.secondary,
+                                          color:
+                                              project.isUserAdmin(
+                                                    UserModel.currentUser.id,
+                                                  )
+                                                  ? AppColors.primary
+                                                  : AppColors.secondary,
                                         ),
                                       ),
                                     ),
                                     const SizedBox(width: 8),
                                     IconButton(
-                                      icon: const Icon(Icons.delete, color: Colors.red, size: 20),
-                                      onPressed: () => _handleProjectAction(context, project.id, project.name),
+                                      icon: const Icon(
+                                        Icons.delete,
+                                        color: Colors.red,
+                                        size: 20,
+                                      ),
+                                      onPressed:
+                                          () => _handleProjectAction(
+                                            context,
+                                            project.id,
+                                            project.name,
+                                          ),
                                     ),
                                     const Icon(Icons.chevron_right, size: 16),
                                   ],
                                 ),
                                 onTap: () {
-                                  print('🔧 Navigating to project detail: ${project.id} (${project.name})');
+                                  print(
+                                    '🔧 Navigating to project detail: ${project.id} (${project.name})',
+                                  );
                                   Navigator.pushNamed(
                                     context,
                                     '/project-detail',
                                     arguments: project.id,
                                   ).then((_) {
-                                    projectProvider.refreshProjects();
+                                    projectProvider.fetchProjects();
                                   });
                                 },
                               ),
@@ -233,7 +307,10 @@ class _ProjectListWidgetState extends State<ProjectListWidget> with TickerProvid
                     height: 200,
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
-                        colors: [AppColors.primary.withOpacity(0.1), Colors.white],
+                        colors: [
+                          AppColors.primary.withOpacity(0.1),
+                          Colors.white,
+                        ],
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
                       ),
@@ -260,19 +337,26 @@ class _ProjectListWidgetState extends State<ProjectListWidget> with TickerProvid
                             ),
                             const SizedBox(height: 8),
                             Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 24),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 24,
+                              ),
                               child: Text(
                                 'Let’s kick off your first project! Create one now and start collaborating with your team.',
                                 textAlign: TextAlign.center,
-                                style: AppTextStyles.bodySmall.copyWith(color: Colors.grey[600]),
+                                style: AppTextStyles.bodySmall.copyWith(
+                                  color: Colors.grey[600],
+                                ),
                               ),
                             ),
                             const SizedBox(height: 20),
                             ElevatedButton(
                               onPressed: () {
                                 _controller.forward(from: 0); // Reset animasi
-                                Navigator.pushNamed(context, '/create-project').then((_) {
-                                  projectProvider.refreshProjects();
+                                Navigator.pushNamed(
+                                  context,
+                                  '/create-project',
+                                ).then((_) {
+                                  projectProvider.fetchProjects();
                                 });
                               },
                               style: ElevatedButton.styleFrom(
@@ -281,7 +365,10 @@ class _ProjectListWidgetState extends State<ProjectListWidget> with TickerProvid
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(20),
                                 ),
-                                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 24,
+                                  vertical: 12,
+                                ),
                               ),
                               child: const Text('Start Your First Project'),
                             ),

@@ -8,6 +8,7 @@ import '../../../data/models/thread_model.dart';
 import '../providers/project_provider.dart';
 import '../providers/project_task_provider.dart';
 import '../../thread/providers/thread_provider.dart';
+import '../../thread/providers/thread_extensions.dart'; // Import the extensions
 import '../../taskroom/helpers/thread_integration_help.dart';
 
 class ProjectSettingsScreen extends StatefulWidget {
@@ -287,18 +288,17 @@ class _ProjectSettingsScreenState extends State<ProjectSettingsScreen> {
       );
       return;
     }
-
     final success = await Provider.of<ProjectProvider>(
       context,
       listen: false,
-    ).updateProject(
-      widget.projectId,
-      name: _nameController.text,
-      description:
+    ).updateProject(widget.projectId, {
+      'name': _nameController.text,
+      'description':
           _descriptionController.text.isEmpty
               ? null
               : _descriptionController.text,
-    );
+    });
+    if (!mounted) return;
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -382,7 +382,7 @@ class _ProjectSettingsScreenState extends State<ProjectSettingsScreen> {
     await Provider.of<ProjectProvider>(
       context,
       listen: false,
-    ).updateProject(widget.projectId, threadCount: subThreads.length);
+    ).updateProject(widget.projectId, {'thread_count': subThreads.length});
 
     _newThreadNameController.clear();
     ScaffoldMessenger.of(
@@ -441,6 +441,49 @@ class _ProjectSettingsScreenState extends State<ProjectSettingsScreen> {
     );
   }
 
+  // Helper methods to update thread data through the provider
+  Future<void> _updateThreadData(
+    String threadId, {
+    String? name,
+    String? description,
+  }) async {
+    final threadProvider = Provider.of<ThreadProvider>(context, listen: false);
+    final threadIndex = threadProvider.threads.indexWhere(
+      (t) => t.id == threadId,
+    );
+    if (threadIndex == -1) return;
+
+    final thread = threadProvider.threads[threadIndex];
+
+    // Use the extension method to update thread info
+    final updatedThread = thread.copyWith(
+      name: name ?? thread.name,
+      description: description ?? thread.description,
+      updatedAt: DateTime.now(),
+    );
+
+    // Call the extension method instead of manually updating
+    await threadProvider.updateThreadInfo(threadId, updatedThread);
+  }
+
+  Future<void> _deleteThreadData(String threadId) async {
+    final threadProvider = Provider.of<ThreadProvider>(context, listen: false);
+
+    // Use the extension method to remove the thread
+    await threadProvider.removeThread(threadId);
+
+    // Update project thread count
+    if (mounted) {
+      final remainingSubThreads = threadProvider.getSubThreads(
+        project!.threadId ?? '',
+      );
+      await Provider.of<ProjectProvider>(context, listen: false).updateProject(
+        widget.projectId,
+        {'thread_count': remainingSubThreads.length},
+      );
+    }
+  }
+
   Widget _buildMemberCard(ProjectMember member, double screenWidth) {
     final isCurrentUser = member.userId == UserModel.currentUser.id;
     final isAdmin = project!.isUserAdmin(UserModel.currentUser.id);
@@ -448,7 +491,7 @@ class _ProjectSettingsScreenState extends State<ProjectSettingsScreen> {
     return Card(
       margin: EdgeInsets.only(bottom: screenWidth * 0.02),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      color: const Color(0xFF0C9371).withOpacity(0.5),
+      color: const Color(0xFF0C9371).withAlpha(128),
       child: ListTile(
         contentPadding: EdgeInsets.all(screenWidth * 0.03),
         leading: CircleAvatar(
@@ -512,7 +555,7 @@ class _ProjectSettingsScreenState extends State<ProjectSettingsScreen> {
     return Card(
       margin: EdgeInsets.only(bottom: screenWidth * 0.02),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      color: const Color(0xFF0C9371).withOpacity(0.5),
+      color: const Color(0xFF0C9371).withAlpha(128),
       child: ListTile(
         contentPadding: EdgeInsets.all(screenWidth * 0.03),
         title: Text(
@@ -757,7 +800,7 @@ class _ProjectSettingsScreenState extends State<ProjectSettingsScreen> {
                     context,
                     listen: false,
                   );
-                  await threadProvider.updateThread(
+                  await _updateThreadData(
                     thread.id,
                     name: newName.startsWith('#') ? newName : '#$newName',
                   );
@@ -801,24 +844,14 @@ class _ProjectSettingsScreenState extends State<ProjectSettingsScreen> {
                     );
                     return;
                   }
-                  final threadProvider = Provider.of<ThreadProvider>(
-                    context,
-                    listen: false,
-                  );
-                  await threadProvider.deleteThread(thread.id);
-                  final subThreads = threadProvider.getSubThreads(
-                    project!.threadId ?? '',
-                  );
-                  await Provider.of<ProjectProvider>(
-                    context,
-                    listen: false,
-                  ).updateProject(
-                    widget.projectId,
-                    threadCount: subThreads.length,
-                  );
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Thread deleted')),
-                  );
+
+                  await _deleteThreadData(thread.id);
+
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Thread deleted')),
+                    );
+                  }
                   Navigator.pop(context);
                 },
                 child: const Text(
@@ -830,35 +863,17 @@ class _ProjectSettingsScreenState extends State<ProjectSettingsScreen> {
           ),
     );
   }
-}
 
-extension ThreadProviderExtensions on ThreadProvider {
-  Future<void> updateThread(
-    String threadId, {
-    String? name,
-    String? description,
-  }) async {
-    final threadIndex = threads.indexWhere((t) => t.id == threadId);
-    if (threadIndex == -1) return;
+  void _checkMountedBeforeUsingContext() {
+    // This is a placeholder method to document the pattern
+    // Whenever we have an async operation, before using BuildContext after that:
+    //   if (!mounted) return;
 
-    final thread = threads[threadIndex];
-    threads[threadIndex] = thread.copyWith(
-      name: name ?? thread.name,
-      description: description ?? thread.description,
-      updatedAt: DateTime.now(),
-    );
-    notifyListeners();
-  }
-
-  Future<void> deleteThread(String threadId) async {
-    // Hapus thread dan semua sub-thread-nya
-    final subThreads = getSubThreads(threadId);
-    for (var subThread in subThreads) {
-      threads.removeWhere((t) => t.id == subThread.id);
-      threadMessages.remove(subThread.id);
-    }
-    threads.removeWhere((t) => t.id == threadId);
-    threadMessages.remove(threadId);
-    notifyListeners();
+    // This ensures that we don't try to use the BuildContext of a widget that's
+    // no longer in the tree, which would cause errors.
   }
 }
+
+// We can't extend ThreadProvider here because notifyListeners() is protected
+// Instead of the extension, we'll modify the ThreadProvider class directly in the appropriate file.
+// For now, let's create methods in the screen that will call the provider methods.

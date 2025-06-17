@@ -3,32 +3,69 @@
 import 'package:flutter/material.dart';
 import '../../../data/models/task_model.dart';
 import '../../../core/network/task_api_service.dart';
+import '../../../providers/loading_state_provider.dart';
+import '../../../core/utils/logger.dart';
 
 class TaskProvider with ChangeNotifier {
   List<TaskModel> _tasks = [];
   final TaskApiService _api = TaskApiService();
   bool _isLoading = false;
   String? _errorMessage;
+  LoadingStateProvider? _loadingStateProvider;
 
   List<TaskModel> get tasks => _tasks;
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
+
+  void setLoadingStateProvider(LoadingStateProvider provider) {
+    _loadingStateProvider = provider;
+    notifyListeners();
+  }
 
   List<TaskModel> get dailyTasks =>
       _tasks.where((task) => task.type == TaskType.daily).toList();
 
   List<TaskModel> get deadlineTasks =>
       _tasks.where((task) => task.type == TaskType.deadline).toList();
-
   Future<void> fetchTasksFromBackend() async {
     _isLoading = true;
     _errorMessage = null;
     notifyListeners();
+
+    if (_loadingStateProvider != null) {
+      _loadingStateProvider!.setModuleLoading(
+        'tasks',
+        message: 'Fetching tasks...',
+      );
+    }
+
     try {
       _tasks = await _api.fetchTasks();
+
+      if (_loadingStateProvider != null) {
+        _loadingStateProvider!.setModuleLoaded(
+          'tasks',
+          message: 'Tasks loaded successfully',
+        );
+      }
+
+      Logger.i(
+        'TaskProvider',
+        'Tasks fetched successfully (${_tasks.length} tasks)',
+      );
     } catch (e) {
       _errorMessage = 'Failed to fetch tasks: $e';
+
+      if (_loadingStateProvider != null) {
+        _loadingStateProvider!.setModuleError(
+          'tasks',
+          message: 'Failed to fetch tasks: $e',
+        );
+      }
+
+      Logger.e('TaskProvider', 'Failed to fetch tasks: $e');
     }
+
     _isLoading = false;
     notifyListeners();
   }
@@ -178,30 +215,37 @@ class TaskProvider with ChangeNotifier {
 
   // Method untuk memeriksa dan mereset daily tasks setiap hari
   void checkDailyReset() {
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
+    // Use Future.microtask to avoid setState during build
+    Future.microtask(() {
+      final now = DateTime.now();
+      final today = DateTime(now.year, now.month, now.day);
+      bool needsUpdate = false;
 
-    // Reset status selesai untuk daily tasks
-    for (int i = 0; i < _tasks.length; i++) {
-      final task = _tasks[i];
-      if (task.type == TaskType.daily && task.isCompleted) {
-        // Cek apakah task diselesaikan kemarin
-        if (task.lastCompleted != null) {
-          final lastCompletedDate = DateTime(
-            task.lastCompleted!.year,
-            task.lastCompleted!.month,
-            task.lastCompleted!.day,
-          );
+      // Reset status selesai untuk daily tasks
+      for (int i = 0; i < _tasks.length; i++) {
+        final task = _tasks[i];
+        if (task.type == TaskType.daily && task.isCompleted) {
+          // Cek apakah task diselesaikan kemarin
+          if (task.lastCompleted != null) {
+            final lastCompletedDate = DateTime(
+              task.lastCompleted!.year,
+              task.lastCompleted!.month,
+              task.lastCompleted!.day,
+            );
 
-          // Jika bukan hari ini, reset completed status
-          if (today.compareTo(lastCompletedDate) > 0) {
-            _tasks[i] = task.copyWith(isCompleted: false);
+            // Jika bukan hari ini, reset completed status
+            if (today.compareTo(lastCompletedDate) > 0) {
+              _tasks[i] = task.copyWith(isCompleted: false);
+              needsUpdate = true;
+            }
           }
         }
       }
-    }
 
-    notifyListeners();
+      if (needsUpdate) {
+        notifyListeners();
+      }
+    });
   }
 
   void cleanCompletedDeadlineTasks() {
@@ -231,19 +275,22 @@ class TaskProvider with ChangeNotifier {
 
   // Method untuk menjadwalkan pembersihan otomatis jam 00:00
   void scheduleMidnightCleanup() {
-    final now = DateTime.now();
+    // Wrap in microtask to avoid setState during build
+    Future.microtask(() {
+      final now = DateTime.now();
 
-    // Hitung waktu sampai tengah malam berikutnya
-    final midnight = DateTime(now.year, now.month, now.day + 1);
-    final timeUntilMidnight = midnight.difference(now);
+      // Hitung waktu sampai tengah malam berikutnya
+      final midnight = DateTime(now.year, now.month, now.day + 1);
+      final timeUntilMidnight = midnight.difference(now);
 
-    // Jadwalkan pembersihan
-    Future.delayed(timeUntilMidnight, () {
-      // Bersihkan task
-      checkAndCleanTasks();
+      // Jadwalkan pembersihan
+      Future.delayed(timeUntilMidnight, () {
+        // Bersihkan task
+        checkAndCleanTasks();
 
-      // Jadwalkan lagi untuk tengah malam berikutnya (rekursif)
-      scheduleMidnightCleanup();
+        // Jadwalkan lagi untuk tengah malam berikutnya (rekursif)
+        scheduleMidnightCleanup();
+      });
     });
   }
 

@@ -9,6 +9,7 @@ import '../../../data/models/project_task_model.dart';
 import '../../../data/models/user_model.dart';
 import '../../../data/models/project_model.dart';
 import '../../../data/models/thread_model.dart';
+import '../../../providers/loading_state_provider.dart';
 import '../providers/home_provider.dart';
 import '../../taskroom/providers/task_provider.dart';
 import '../../taskroom/providers/project_task_provider.dart';
@@ -30,16 +31,57 @@ class _ReminderWidgetState extends State<ReminderWidget> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return; // Check if still mounted
+
       final taskProvider = Provider.of<TaskProvider>(context, listen: false);
       final homeProvider = Provider.of<HomeProvider>(context, listen: false);
-      homeProvider.setTaskProvider(taskProvider);
+      final loadingStateProvider = Provider.of<LoadingStateProvider>(
+        context,
+        listen: false,
+      );
+
+      // Use microtask to prevent setState during build
+      Future.microtask(() {
+        if (mounted) {
+          // Double check if still mounted
+          homeProvider.setTaskProvider(taskProvider);
+          homeProvider.setLoadingStateProvider(loadingStateProvider);
+        }
+      });
     });
   }
 
   @override
   Widget build(BuildContext context) {
-    return Consumer5<HomeProvider, TaskProvider, ProjectTaskProvider, ProjectProvider, ThreadProvider>(
-      builder: (context, homeProvider, taskProvider, projectTaskProvider, projectProvider, threadProvider, child) {
+    return Consumer5<
+      HomeProvider,
+      TaskProvider,
+      ProjectTaskProvider,
+      ProjectProvider,
+      ThreadProvider
+    >(
+      builder: (
+        context,
+        homeProvider,
+        taskProvider,
+        projectTaskProvider,
+        projectProvider,
+        threadProvider,
+        child,
+      ) {
+        // Check loading state
+        if (homeProvider.isLoading) {
+          return const _LoadingReminderState();
+        }
+
+        // Check error state
+        if (homeProvider.hasError) {
+          return _ErrorReminderState(
+            errorMessage: homeProvider.errorMessage ?? 'Unknown error occurred',
+            onRetry: () => homeProvider.refreshHomeData(),
+          );
+        }
+
         final todayDeadlines = homeProvider.todayDeadlines;
         final uncompletedDailyTasks = homeProvider.uncompletedDailyTasks;
         final completedTasksThisWeek = homeProvider.tasksCompletedThisWeek;
@@ -60,7 +102,11 @@ class _ReminderWidgetState extends State<ReminderWidget> {
               _buildDirectMentionCard(context, threadProvider, projectProvider),
               const SizedBox(height: 16),
               // Subcard 2: Assignment Notification
-              _buildAssignmentCard(context, projectTaskProvider, projectProvider),
+              _buildAssignmentCard(
+                context,
+                projectTaskProvider,
+                projectProvider,
+              ),
               const SizedBox(height: 16),
               // ReminderBot
               Container(
@@ -72,7 +118,10 @@ class _ReminderWidgetState extends State<ReminderWidget> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('🤖 ReminderBot', style: AppTextStyles.bodyLarge),
+                    const Text(
+                      '🤖 ReminderBot',
+                      style: AppTextStyles.bodyLarge,
+                    ),
                     const SizedBox(height: 8),
                     Text(
                       todayDeadlines.isEmpty
@@ -82,11 +131,17 @@ class _ReminderWidgetState extends State<ReminderWidget> {
                     ),
                     if (todayDeadlines.isNotEmpty) ...[
                       const SizedBox(height: 12),
-                      ...todayDeadlines.take(2).map((task) => _buildDeadlineItem(task)),
+                      ...todayDeadlines
+                          .take(2)
+                          .map((task) => _buildDeadlineItem(task)),
                       if (todayDeadlines.length > 2) ...[
                         const SizedBox(height: 8),
                         GestureDetector(
-                          onTap: () => _showReminderBotPopup(context, todayDeadlines),
+                          onTap:
+                              () => _showReminderBotPopup(
+                                context,
+                                todayDeadlines,
+                              ),
                           child: Row(
                             mainAxisAlignment: MainAxisAlignment.end,
                             children: const [
@@ -139,7 +194,11 @@ class _ReminderWidgetState extends State<ReminderWidget> {
                             style: AppTextStyles.bodyMedium,
                           ),
                           GestureDetector(
-                            onTap: () => _showWhatsGoingOnPopup(context, uncompletedDailyTasks),
+                            onTap:
+                                () => _showWhatsGoingOnPopup(
+                                  context,
+                                  uncompletedDailyTasks,
+                                ),
                             child: Row(
                               children: const [
                                 Text(
@@ -189,9 +248,15 @@ class _ReminderWidgetState extends State<ReminderWidget> {
   ) {
     final mentions = <MessageModel>[];
     threadProvider.threadMessages.forEach((threadId, messages) {
-      mentions.addAll(messages.where((msg) =>
-          msg.mentions.any((mention) =>
-              mention.userId == UserModel.currentUser.id || mention.mentionText == '@all')));
+      mentions.addAll(
+        messages.where(
+          (msg) => msg.mentions.any(
+            (mention) =>
+                mention.userId == UserModel.currentUser.id ||
+                mention.mentionText == '@all',
+          ),
+        ),
+      );
     });
 
     mentions.sort((a, b) => b.createdAt.compareTo(a.createdAt));
@@ -200,7 +265,12 @@ class _ReminderWidgetState extends State<ReminderWidget> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color.fromARGB(255, 27, 196, 27).withOpacity(0.2), // Ubah warna ke primary (biru)
+        color: const Color.fromARGB(
+          255,
+          27,
+          196,
+          27,
+        ).withOpacity(0.2), // Ubah warna ke primary (biru)
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
@@ -214,10 +284,21 @@ class _ReminderWidgetState extends State<ReminderWidget> {
             Column(
               children: [
                 for (var message in displayedMentions)
-                  _buildMentionItem(context, message, threadProvider, projectProvider),
+                  _buildMentionItem(
+                    context,
+                    message,
+                    threadProvider,
+                    projectProvider,
+                  ),
                 if (mentions.length > 2)
                   GestureDetector(
-                    onTap: () => _showMentionsDialog(context, mentions, threadProvider, projectProvider),
+                    onTap:
+                        () => _showMentionsDialog(
+                          context,
+                          mentions,
+                          threadProvider,
+                          projectProvider,
+                        ),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.end,
                       children: const [
@@ -251,23 +332,28 @@ class _ReminderWidgetState extends State<ReminderWidget> {
   ) {
     final thread = threadProvider.threads.firstWhere(
       (t) => t.id == message.threadId,
-      orElse: () => ThreadModel(
-        id: '',
-        name: 'Unknown',
-        type: ThreadType.project,
-        members: [],
-        createdAt: DateTime.now(),
-        updatedAt: DateTime.now(),
-      ),
+      orElse:
+          () => ThreadModel(
+            id: '',
+            name: 'Unknown',
+            type: ThreadType.project,
+            members: [],
+            createdAt: DateTime.now(),
+            updatedAt: DateTime.now(),
+          ),
     );
-    final parentThread = thread.parentThreadId != null
-        ? threadProvider.threads.firstWhere(
-            (t) => t.id == thread.parentThreadId!,
-            orElse: () => thread,
-          )
-        : thread;
-    final project = projectProvider.getProjectById(parentThread.projectId ?? '');
-    final threadName = project != null ? '${project.name} > ${thread.name}' : thread.name;
+    final parentThread =
+        thread.parentThreadId != null
+            ? threadProvider.threads.firstWhere(
+              (t) => t.id == thread.parentThreadId!,
+              orElse: () => thread,
+            )
+            : thread;
+    final project = projectProvider.getProjectById(
+      parentThread.projectId ?? '',
+    );
+    final threadName =
+        project != null ? '${project.name} > ${thread.name}' : thread.name;
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
@@ -294,7 +380,11 @@ class _ReminderWidgetState extends State<ReminderWidget> {
           ),
           TextButton(
             onPressed: () {
-              Navigator.pushNamed(context, '/thread', arguments: message.threadId);
+              Navigator.pushNamed(
+                context,
+                '/thread',
+                arguments: message.threadId,
+              );
             },
             child: const Text('Reply'),
           ),
@@ -315,7 +405,9 @@ class _ReminderWidgetState extends State<ReminderWidget> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppColors.secondary.withOpacity(0.2), // Ubah warna ke secondary (misalnya hijau)
+        color: AppColors.secondary.withOpacity(
+          0.2,
+        ), // Ubah warna ke secondary (misalnya hijau)
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
@@ -324,7 +416,10 @@ class _ReminderWidgetState extends State<ReminderWidget> {
           const Text('Assigned Tasks', style: AppTextStyles.bodyLarge),
           const SizedBox(height: 8),
           if (displayedTasks.isEmpty)
-            const Text('No assigned tasks yet.', style: AppTextStyles.bodyMedium)
+            const Text(
+              'No assigned tasks yet.',
+              style: AppTextStyles.bodyMedium,
+            )
           else
             Column(
               children: [
@@ -332,7 +427,12 @@ class _ReminderWidgetState extends State<ReminderWidget> {
                   _buildTaskItem(context, task, projectProvider),
                 if (assignedTasks.length > 2)
                   GestureDetector(
-                    onTap: () => _showTasksDialog(context, assignedTasks, projectProvider),
+                    onTap:
+                        () => _showTasksDialog(
+                          context,
+                          assignedTasks,
+                          projectProvider,
+                        ),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.end,
                       children: const [
@@ -366,12 +466,13 @@ class _ReminderWidgetState extends State<ReminderWidget> {
     final project = projectProvider.getProjectById(task.projectId);
     final assigner = project?.members.firstWhere(
       (member) => member.userId == task.assignerId,
-      orElse: () => ProjectMember(
-        userId: task.assignerId,
-        user: UserModel(id: task.assignerId, name: 'Unknown', email: ''),
-        role: ProjectRole.member,
-        joinedAt: DateTime.now(),
-      ),
+      orElse:
+          () => ProjectMember(
+            userId: task.assignerId,
+            user: UserModel(id: task.assignerId, name: 'Unknown', email: ''),
+            role: ProjectRole.member,
+            joinedAt: DateTime.now(),
+          ),
     );
 
     return Padding(
@@ -397,7 +498,11 @@ class _ReminderWidgetState extends State<ReminderWidget> {
           ),
           TextButton(
             onPressed: () {
-              Navigator.pushNamed(context, '/project-detail', arguments: task.projectId);
+              Navigator.pushNamed(
+                context,
+                '/project-detail',
+                arguments: task.projectId,
+              );
             },
             child: const Text('View Task'),
           ),
@@ -416,7 +521,9 @@ class _ReminderWidgetState extends State<ReminderWidget> {
       context: context,
       builder: (context) {
         return Dialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
           child: Container(
             padding: const EdgeInsets.all(16),
             child: Column(
@@ -426,12 +533,22 @@ class _ReminderWidgetState extends State<ReminderWidget> {
                 const Text('All Mentions', style: AppTextStyles.heading3),
                 const SizedBox(height: 8),
                 Container(
-                  constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.3),
+                  constraints: BoxConstraints(
+                    maxHeight: MediaQuery.of(context).size.height * 0.3,
+                  ),
                   child: SingleChildScrollView(
                     child: Column(
-                      children: mentions
-                          .map((message) => _buildMentionItem(context, message, threadProvider, projectProvider))
-                          .toList(),
+                      children:
+                          mentions
+                              .map(
+                                (message) => _buildMentionItem(
+                                  context,
+                                  message,
+                                  threadProvider,
+                                  projectProvider,
+                                ),
+                              )
+                              .toList(),
                     ),
                   ),
                 ),
@@ -460,7 +577,9 @@ class _ReminderWidgetState extends State<ReminderWidget> {
       context: context,
       builder: (context) {
         return Dialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
           child: Container(
             padding: const EdgeInsets.all(16),
             child: Column(
@@ -470,10 +589,21 @@ class _ReminderWidgetState extends State<ReminderWidget> {
                 const Text('All Assigned Tasks', style: AppTextStyles.heading3),
                 const SizedBox(height: 8),
                 Container(
-                  constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.3),
+                  constraints: BoxConstraints(
+                    maxHeight: MediaQuery.of(context).size.height * 0.3,
+                  ),
                   child: SingleChildScrollView(
                     child: Column(
-                      children: tasks.map((task) => _buildTaskItem(context, task, projectProvider)).toList(),
+                      children:
+                          tasks
+                              .map(
+                                (task) => _buildTaskItem(
+                                  context,
+                                  task,
+                                  projectProvider,
+                                ),
+                              )
+                              .toList(),
                     ),
                   ),
                 ),
@@ -498,11 +628,7 @@ class _ReminderWidgetState extends State<ReminderWidget> {
       padding: const EdgeInsets.only(left: 8, top: 4, bottom: 4),
       child: Row(
         children: [
-          Icon(
-            Icons.circle,
-            size: 8,
-            color: _getPriorityColor(task.priority),
-          ),
+          Icon(Icons.circle, size: 8, color: _getPriorityColor(task.priority)),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
@@ -517,10 +643,7 @@ class _ReminderWidgetState extends State<ReminderWidget> {
           if (task.dueTime != null)
             Text(
               task.dueTime!.format(context),
-              style: TextStyle(
-                fontSize: 12,
-                color: Colors.grey[600],
-              ),
+              style: TextStyle(fontSize: 12, color: Colors.grey[600]),
             ),
         ],
       ),
@@ -532,19 +655,12 @@ class _ReminderWidgetState extends State<ReminderWidget> {
       padding: const EdgeInsets.only(left: 8, top: 4, bottom: 4),
       child: Row(
         children: [
-          const Icon(
-            Icons.circle,
-            size: 8,
-            color: AppColors.primary,
-          ),
+          const Icon(Icons.circle, size: 8, color: AppColors.primary),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
               task.title,
-              style: const TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w500,
-              ),
+              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
             ),
           ),
           Container(
@@ -598,7 +714,9 @@ class _ReminderWidgetState extends State<ReminderWidget> {
       context: context,
       builder: (BuildContext context) {
         return Dialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
           child: Container(
             padding: const EdgeInsets.all(16),
             child: Column(
@@ -622,11 +740,16 @@ class _ReminderWidgetState extends State<ReminderWidget> {
                 ),
                 const SizedBox(height: 16),
                 Container(
-                  constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.3),
+                  constraints: BoxConstraints(
+                    maxHeight: MediaQuery.of(context).size.height * 0.3,
+                  ),
                   child: SingleChildScrollView(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
-                      children: tasks.map((task) => _buildDeadlineItem(task)).toList(),
+                      children:
+                          tasks
+                              .map((task) => _buildDeadlineItem(task))
+                              .toList(),
                     ),
                   ),
                 ),
@@ -654,7 +777,9 @@ class _ReminderWidgetState extends State<ReminderWidget> {
       context: context,
       builder: (BuildContext context) {
         return Dialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
           child: Container(
             padding: const EdgeInsets.all(16),
             child: Column(
@@ -664,7 +789,10 @@ class _ReminderWidgetState extends State<ReminderWidget> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text("What's Going On", style: AppTextStyles.heading3),
+                    const Text(
+                      "What's Going On",
+                      style: AppTextStyles.heading3,
+                    ),
                     IconButton(
                       icon: const Icon(Icons.close),
                       onPressed: () => Navigator.of(context).pop(),
@@ -678,11 +806,16 @@ class _ReminderWidgetState extends State<ReminderWidget> {
                 ),
                 const SizedBox(height: 16),
                 Container(
-                  constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.3),
+                  constraints: BoxConstraints(
+                    maxHeight: MediaQuery.of(context).size.height * 0.3,
+                  ),
                   child: SingleChildScrollView(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
-                      children: tasks.map((task) => _buildDailyTaskItem(task)).toList(),
+                      children:
+                          tasks
+                              .map((task) => _buildDailyTaskItem(task))
+                              .toList(),
                     ),
                   ),
                 ),
@@ -702,6 +835,75 @@ class _ReminderWidgetState extends State<ReminderWidget> {
           ),
         );
       },
+    );
+  }
+}
+
+// Loading state widget
+class _LoadingReminderState extends StatelessWidget {
+  const _LoadingReminderState();
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: EdgeInsets.zero,
+      child: Container(
+        height: 200,
+        padding: const EdgeInsets.all(16.0),
+        child: const Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(height: 16),
+              Text('Loading your tasks and deadlines...'),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// Error state widget
+class _ErrorReminderState extends StatelessWidget {
+  final String errorMessage;
+  final VoidCallback onRetry;
+
+  const _ErrorReminderState({
+    required this.errorMessage,
+    required this.onRetry,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: EdgeInsets.zero,
+      child: Container(
+        height: 200,
+        padding: const EdgeInsets.all(16.0),
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.error_outline, size: 48, color: Colors.red),
+              const SizedBox(height: 16),
+              const Text(
+                'Failed to load reminders',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                errorMessage,
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 12, color: Colors.red[700]),
+              ),
+              const SizedBox(height: 16),
+              ElevatedButton(onPressed: onRetry, child: const Text('Retry')),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

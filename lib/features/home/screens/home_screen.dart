@@ -8,6 +8,8 @@ import '../widgets/reminder_widget.dart';
 import '../../../core/utils/responsive_utils.dart';
 import '../providers/home_provider.dart';
 import '../../taskroom/providers/task_provider.dart';
+import '../../../providers/loading_state_provider.dart';
+import '../../../core/utils/logger.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -18,64 +20,104 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   final int _currentIndex = 0;
+  final GlobalKey<RefreshIndicatorState> _refreshIndicatorKey =
+      GlobalKey<RefreshIndicatorState>();
+
+  @override
+  void initState() {
+    super.initState();
+    // Initialize providers after build
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _initializeProviders();
+    });
+  }
+
+  Future<void> _initializeProviders() async {
+    // Use context.mounted to prevent setState after dispose
+    if (!mounted) return;
+
+    final taskProvider = Provider.of<TaskProvider>(context, listen: false);
+    final homeProvider = Provider.of<HomeProvider>(context, listen: false);
+    final loadingStateProvider = Provider.of<LoadingStateProvider>(
+      context,
+      listen: false,
+    );
+
+    // Set providers
+    homeProvider.setTaskProvider(taskProvider);
+    homeProvider.setLoadingStateProvider(loadingStateProvider);
+
+    // Load initial data (in a future to avoid setState during build)
+    Future.microtask(() async {
+      await homeProvider.loadHomeData();
+    });
+  }
+
+  // Pull to refresh functionality
+  Future<void> _handleRefresh() async {
+    final homeProvider = Provider.of<HomeProvider>(context, listen: false);
+    await homeProvider.refreshHomeData();
+    return;
+  }
 
   @override
   Widget build(BuildContext context) {
-    // Pastikan TaskProvider diakses di home page
-    final taskProvider = Provider.of<TaskProvider>(context, listen: false);
-    final homeProvider = Provider.of<HomeProvider>(context, listen: false);
-    
-    // Set task provider ke home provider jika belum
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      homeProvider.setTaskProvider(taskProvider);
-    });
-
     return Scaffold(
       body: SafeArea(
-        child: SingleChildScrollView(
-          padding: ResponsiveUtils.getScreenPadding(context),
-          child: Center(
-            child: ConstrainedBox(
-              constraints: BoxConstraints(
-                maxWidth: ResponsiveUtils.getCardWidth(context),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Welcome section
-                  Text(
-                    '👋 Welcome back, ${UserModel.currentUser.name}!',
-                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                      fontWeight: FontWeight.bold,
+        child: Consumer<HomeProvider>(
+          builder: (context, homeProvider, _) {
+            return RefreshIndicator(
+              key: _refreshIndicatorKey,
+              onRefresh: _handleRefresh,
+              child: SingleChildScrollView(
+                // Set physics to AlwaysScrollableScrollPhysics to enable pull-to-refresh even when content is small
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: ResponsiveUtils.getScreenPadding(context),
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(
+                      maxWidth: ResponsiveUtils.getCardWidth(context),
+                      // Ensure minimum height for the RefreshIndicator to work
+                      minHeight: MediaQuery.of(context).size.height - 100,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Welcome section
+                        Text(
+                          '👋 Welcome back, ${UserModel.currentUser.name}!',
+                          style: Theme.of(context).textTheme.headlineSmall
+                              ?.copyWith(fontWeight: FontWeight.bold),
+                        ),
+                        const Text(
+                          "Let's build something awesome today.",
+                          style: TextStyle(fontSize: 16),
+                        ),
+                        const SizedBox(height: 24),
+
+                        // Calendar widget
+                        const CalendarWidget(),
+                        const SizedBox(height: 24),
+
+                        // Project list section
+                        const ProjectListWidget(),
+                        const SizedBox(height: 24),
+                        // Reminder section
+                        const ReminderWidget(),
+                      ],
                     ),
                   ),
-                  const Text(
-                    "Let's build something awesome today.",
-                    style: TextStyle(fontSize: 16),
-                  ),
-                  const SizedBox(height: 24),
-                  
-                  // Calendar widget
-                  const CalendarWidget(),
-                  const SizedBox(height: 24),
-                  
-                  // Project list section
-                  const ProjectListWidget(),
-                  const SizedBox(height: 24),
-                  
-                  // Reminder section
-                  const ReminderWidget(),
-                ],
+                ),
               ),
-            ),
-          ),
+            );
+          },
         ),
       ),
       bottomNavigationBar: BottomNavBar(
         currentIndex: _currentIndex,
         onTap: (index) {
           if (index == _currentIndex) return;
-          
+
           switch (index) {
             case 0:
               // Already on Home
@@ -97,36 +139,37 @@ class _HomeScreenState extends State<HomeScreen> {
           // Buka dialog atau screen untuk menambahkan task/project
           showDialog(
             context: context,
-            builder: (context) => AlertDialog(
-              title: const Text('Create New'),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  ListTile(
-                    leading: const Icon(Icons.task),
-                    title: const Text('Create Task'),
-                    onTap: () {
-                      Navigator.pop(context);
-                      Navigator.pushNamed(context, '/create-task');
-                    },
+            builder:
+                (context) => AlertDialog(
+                  title: const Text('Create New'),
+                  content: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      ListTile(
+                        leading: const Icon(Icons.task),
+                        title: const Text('Create Task'),
+                        onTap: () {
+                          Navigator.pop(context);
+                          Navigator.pushNamed(context, '/create-task');
+                        },
+                      ),
+                      ListTile(
+                        leading: const Icon(Icons.folder),
+                        title: const Text('Create Project'),
+                        onTap: () {
+                          Navigator.pop(context);
+                          // Navigate to create project
+                        },
+                      ),
+                    ],
                   ),
-                  ListTile(
-                    leading: const Icon(Icons.folder),
-                    title: const Text('Create Project'),
-                    onTap: () {
-                      Navigator.pop(context);
-                      // Navigate to create project
-                    },
-                  ),
-                ],
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('Cancel'),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text('Cancel'),
+                    ),
+                  ],
                 ),
-              ],
-            ),
           );
         },
         child: const Icon(Icons.add),
