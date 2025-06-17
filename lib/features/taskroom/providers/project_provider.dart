@@ -5,6 +5,7 @@ import '../../../core/network/api_client.dart';
 import '../../../core/utils/logger.dart';
 import '../../../providers/loading_state_provider.dart';
 import '../../thread/providers/thread_provider.dart'; // Added import for ThreadProvider
+import '../../../core/utils/personalization_helper.dart';
 
 enum ProjectLoadingState { idle, loading, success, error }
 
@@ -43,6 +44,11 @@ class ProjectProvider with ChangeNotifier {
 
   // Getters
   List<ProjectModel> get projects => _projects;
+
+  // Get only projects where the current user is a member
+  List<ProjectModel> get userProjects =>
+      PersonalizationHelper.getCurrentUserProjects(_projects);
+
   ProjectLoadingState get loadingState => _loadingState;
   String? get errorMessage => _errorMessage;
   bool get isLoading => _loadingState == ProjectLoadingState.loading;
@@ -59,14 +65,7 @@ class ProjectProvider with ChangeNotifier {
     Logger.i('ProjectProvider', 'ThreadProvider has been set');
     notifyListeners();
   }
-
-  // Get projects where current user is member
-  List<ProjectModel> get userProjects {
-    final currentUserId = UserModel.currentUser.id;
-    return _projects
-        .where((project) => project.isUserMember(currentUserId))
-        .toList();
-  }
+  // Get projects where current user is member (using PersonalizationHelper)
 
   // Get projects created by current user
   List<ProjectModel> get createdProjects {
@@ -88,16 +87,45 @@ class ProjectProvider with ChangeNotifier {
         message: 'Fetching projects...',
       );
     }
-
     try {
-      final response = await _apiClient.get('/projects');
-      if (response['status'] == 'error') {
-        throw Exception(response['message']);
+      final response = await _apiClient.get('/projects.php');
+
+      // Check if response is null
+      if (response == null) {
+        throw Exception('No response received from server');
       }
 
-      final List<dynamic> projectsData = response is List ? response : [];
+      // Handle our API response format: {status: 'success', data: [...]}
+      if (response['status'] == 'error') {
+        throw Exception(response['message'] ?? 'Unknown error occurred');
+      }
+
+      // Ensure we have a success response
+      if (response['status'] != 'success') {
+        throw Exception('Unexpected response status: ${response['status']}');
+      }
+
+      // Extract the data array from the success response
+      final dynamic responseData = response['data'];
+      final List<dynamic> projectsData;
+
+      if (responseData == null) {
+        projectsData = [];
+      } else if (responseData is List) {
+        projectsData = responseData;
+      } else {
+        throw Exception(
+          'Invalid data format: expected List but got ${responseData.runtimeType}',
+        );
+      }
+
       _projects =
-          projectsData.map((json) => ProjectModel.fromJson(json)).toList();
+          projectsData.map((json) {
+            if (json == null) {
+              throw Exception('Null project data received');
+            }
+            return ProjectModel.fromJson(json as Map<String, dynamic>);
+          }).toList();
 
       _setLoadingState(ProjectLoadingState.success);
 

@@ -1,6 +1,7 @@
 import '../models/user_model.dart';
 
 enum ProjectRole { admin, member, viewer }
+
 enum ProjectStatus { active, archived, completed }
 
 class ProjectMember {
@@ -15,13 +16,12 @@ class ProjectMember {
     required this.role,
     required this.joinedAt,
   });
-
   factory ProjectMember.fromJson(Map<String, dynamic> json) {
     return ProjectMember(
-      userId: json['user_id'],
-      user: UserModel.fromJson(json['user']),
+      userId: json['user_id']?.toString() ?? '',
+      user: UserModel.fromJson(json['user'] ?? {}),
       role: _getRoleFromString(json['role']),
-      joinedAt: DateTime.parse(json['joined_at']),
+      joinedAt: _parseDateSafely(json['joined_at']),
     );
   }
 
@@ -35,7 +35,7 @@ class ProjectMember {
   }
 
   static ProjectRole _getRoleFromString(String? roleStr) {
-    switch (roleStr) {
+    switch (roleStr?.trim()) {
       case 'admin':
         return ProjectRole.admin;
       case 'member':
@@ -44,6 +44,19 @@ class ProjectMember {
         return ProjectRole.viewer;
       default:
         return ProjectRole.member;
+    }
+  }
+
+  static DateTime _parseDateSafely(String? dateStr) {
+    if (dateStr == null ||
+        dateStr.isEmpty ||
+        dateStr == '0000-00-00 00:00:00') {
+      return DateTime.now();
+    }
+    try {
+      return DateTime.parse(dateStr);
+    } catch (e) {
+      return DateTime.now();
     }
   }
 
@@ -90,24 +103,38 @@ class ProjectModel {
     required this.updatedAt,
     this.threadId,
   });
-
   // Factory untuk membuat dari JSON (backend integration ready)
   factory ProjectModel.fromJson(Map<String, dynamic> json) {
+    // Handle creator data - might be nested or flat
+    UserModel creator;
+    if (json['creator'] != null) {
+      creator = UserModel.fromJson(json['creator']);
+    } else {
+      // Create creator from flat data
+      creator = UserModel(
+        id: json['creator_id']?.toString() ?? '',
+        name: json['creator_name'] ?? 'Unknown',
+        email: json['creator_email'] ?? '',
+      );
+    }
+
     return ProjectModel(
-      id: json['id'],
-      name: json['name'],
-      description: json['description'],
-      creatorId: json['creator_id'],
-      creator: UserModel.fromJson(json['creator']),
-      members: (json['members'] as List?)
-          ?.map((m) => ProjectMember.fromJson(m))
-          .toList() ?? [],
-      taskCount: json['task_count'] ?? 0,
-      threadCount: json['thread_count'] ?? 0,
+      id: json['id']?.toString() ?? '',
+      name: json['name'] ?? '',
+      description: json['description'] ?? '',
+      creatorId: json['creator_id']?.toString() ?? '',
+      creator: creator,
+      members:
+          (json['members'] as List?)
+              ?.map((m) => ProjectMember.fromJson(m))
+              .toList() ??
+          [],
+      taskCount: _parseIntSafely(json['task_count']),
+      threadCount: _parseIntSafely(json['thread_count']),
       status: _getStatusFromString(json['status']),
-      createdAt: DateTime.parse(json['created_at']),
-      updatedAt: DateTime.parse(json['updated_at']),
-      threadId: json['thread_id'],
+      createdAt: _parseDateSafelyForProject(json['created_at']),
+      updatedAt: _parseDateSafelyForProject(json['updated_at']),
+      threadId: json['thread_id']?.toString(),
     );
   }
 
@@ -130,7 +157,7 @@ class ProjectModel {
   }
 
   static ProjectStatus _getStatusFromString(String? statusStr) {
-    switch (statusStr) {
+    switch (statusStr?.trim()) {
       case 'active':
         return ProjectStatus.active;
       case 'archived':
@@ -139,6 +166,28 @@ class ProjectModel {
         return ProjectStatus.completed;
       default:
         return ProjectStatus.active;
+    }
+  }
+
+  static int _parseIntSafely(dynamic value) {
+    if (value == null) return 0;
+    if (value is int) return value;
+    if (value is String) {
+      return int.tryParse(value) ?? 0;
+    }
+    return 0;
+  }
+
+  static DateTime _parseDateSafelyForProject(String? dateStr) {
+    if (dateStr == null ||
+        dateStr.isEmpty ||
+        dateStr == '0000-00-00 00:00:00') {
+      return DateTime.now();
+    }
+    try {
+      return DateTime.parse(dateStr);
+    } catch (e) {
+      return DateTime.now();
     }
   }
 
@@ -178,8 +227,9 @@ class ProjectModel {
   }
 
   bool isUserAdmin(String userId) {
-    return members.any((member) => 
-        member.userId == userId && member.role == ProjectRole.admin);
+    return members.any(
+      (member) => member.userId == userId && member.role == ProjectRole.admin,
+    );
   }
 
   ProjectRole? getUserRole(String userId) {

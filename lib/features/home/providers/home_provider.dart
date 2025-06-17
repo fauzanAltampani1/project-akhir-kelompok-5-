@@ -4,6 +4,7 @@ import '../../../data/models/task_model.dart';
 import '../../taskroom/providers/task_provider.dart';
 import '../../../providers/loading_state_provider.dart';
 import '../../../core/utils/logger.dart';
+import '../../../core/utils/personalization_helper.dart';
 
 class HomeProvider with ChangeNotifier {
   final List<ProjectModel> _projects = ProjectModel.dummyProjects;
@@ -26,6 +27,11 @@ class HomeProvider with ChangeNotifier {
   }
 
   List<ProjectModel> get projects => _projects;
+
+  // Get only projects where the current user is a member
+  List<ProjectModel> get userProjects =>
+      PersonalizationHelper.getCurrentUserProjects(_projects);
+
   DateTime get selectedDate => _selectedDate;
 
   // Get loading states

@@ -120,37 +120,39 @@ class ProjectTaskCard extends StatelessWidget {
                 else if (projectProvider.errorMessage != null)
                   SizedBox(
                     height: 150,
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Icon(
-                          Icons.error_outline,
-                          size: 48,
-                          color: Colors.red,
-                        ),
-                        const SizedBox(height: 12),
-                        Text(
-                          'Failed to load projects',
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
+                    child: SingleChildScrollView(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(
+                            Icons.error_outline,
+                            size: 48,
                             color: Colors.red,
                           ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          projectProvider.errorMessage!,
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.red[700],
+                          const SizedBox(height: 12),
+                          Text(
+                            'Failed to load projects',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: Colors.red,
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: 16),
-                        ElevatedButton(
-                          onPressed: () => projectProvider.fetchProjects(),
-                          child: const Text('Retry'),
-                        ),
-                      ],
+                          const SizedBox(height: 8),
+                          Text(
+                            projectProvider.errorMessage!,
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.red[700],
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          ElevatedButton(
+                            onPressed: () => projectProvider.fetchProjects(),
+                            child: const Text('Retry'),
+                          ),
+                        ],
+                      ),
                     ),
                   )
                 else if (hasProjects)

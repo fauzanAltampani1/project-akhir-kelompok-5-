@@ -70,9 +70,10 @@ class ProjectTaskProvider with ChangeNotifier {
 
     _loadingState = ProjectTaskLoadingState.loading;
     notifyListeners();
-
     try {
-      final response = await _apiClient.get('/projects/$projectId/tasks');
+      final response = await _apiClient.get(
+        '/project_tasks.php?project_id=$projectId',
+      );
       if (response is Map<String, dynamic> && response['status'] == 'error') {
         throw Exception(response['message']);
       }

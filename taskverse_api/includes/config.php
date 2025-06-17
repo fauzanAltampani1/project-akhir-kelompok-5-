@@ -1,4 +1,8 @@
 <?php
+// Prevent any output before JSON response
+error_reporting(E_ERROR | E_PARSE);
+ini_set('display_errors', 0);
+
 // Database configuration
 define('DB_HOST', 'localhost');
 define('DB_NAME', 'taskverse_db');
@@ -16,6 +20,6 @@ define('ERROR_LOG_FILE', __DIR__ . '/../logs/api_errors.log');
 
 // Create logs directory if it doesn't exist
 if (!file_exists(__DIR__ . '/../logs')) {
-    mkdir(__DIR__ . '/../logs', 0777, true);
+    @mkdir(__DIR__ . '/../logs', 0777, true);
 }
 ?>

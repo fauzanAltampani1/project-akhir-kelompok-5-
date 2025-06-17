@@ -15,6 +15,8 @@ import '../../taskroom/providers/task_provider.dart';
 import '../../taskroom/providers/project_task_provider.dart';
 import '../../taskroom/providers/project_provider.dart';
 import '../../thread/providers/thread_provider.dart';
+import '../../../core/utils/personalization_helper.dart';
+import 'priority_tasks_widget.dart';
 // Import aliases to resolve TaskPriority conflict
 import '../../../data/models/task_model.dart' as task_model;
 import '../../../data/models/project_task_model.dart' as project_task_model;
@@ -31,19 +33,15 @@ class _ReminderWidgetState extends State<ReminderWidget> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return; // Check if still mounted
-
+      if (!mounted) return;
       final taskProvider = Provider.of<TaskProvider>(context, listen: false);
       final homeProvider = Provider.of<HomeProvider>(context, listen: false);
       final loadingStateProvider = Provider.of<LoadingStateProvider>(
         context,
         listen: false,
       );
-
-      // Use microtask to prevent setState during build
       Future.microtask(() {
         if (mounted) {
-          // Double check if still mounted
           homeProvider.setTaskProvider(taskProvider);
           homeProvider.setLoadingStateProvider(loadingStateProvider);
         }
@@ -69,23 +67,18 @@ class _ReminderWidgetState extends State<ReminderWidget> {
         threadProvider,
         child,
       ) {
-        // Check loading state
         if (homeProvider.isLoading) {
           return const _LoadingReminderState();
         }
-
-        // Check error state
         if (homeProvider.hasError) {
           return _ErrorReminderState(
             errorMessage: homeProvider.errorMessage ?? 'Unknown error occurred',
             onRetry: () => homeProvider.refreshHomeData(),
           );
         }
-
         final todayDeadlines = homeProvider.todayDeadlines;
         final uncompletedDailyTasks = homeProvider.uncompletedDailyTasks;
         final completedTasksThisWeek = homeProvider.tasksCompletedThisWeek;
-
         return SingleChildScrollView(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -133,18 +126,17 @@ class _ReminderWidgetState extends State<ReminderWidget> {
                       const SizedBox(height: 12),
                       ...todayDeadlines
                           .take(2)
-                          .map((task) => _buildDeadlineItem(task)),
+                          .map((task) => _buildDeadlineItem(task))
+                          .toList(),
                       if (todayDeadlines.length > 2) ...[
                         const SizedBox(height: 8),
                         GestureDetector(
-                          onTap:
-                              () => _showReminderBotPopup(
-                                context,
-                                todayDeadlines,
-                              ),
-                          child: Row(
+                          onTap: () {
+                            _showReminderBotPopup(context, todayDeadlines);
+                          },
+                          child: const Row(
                             mainAxisAlignment: MainAxisAlignment.end,
-                            children: const [
+                            children: [
                               Text(
                                 'more',
                                 style: TextStyle(
@@ -165,6 +157,10 @@ class _ReminderWidgetState extends State<ReminderWidget> {
                   ],
                 ),
               ),
+
+              // Priority Tasks Section (using separate widget)
+              const PriorityTasksWidget(),
+
               const SizedBox(height: 16),
               // What's Going On Section
               Row(
@@ -624,29 +620,36 @@ class _ReminderWidgetState extends State<ReminderWidget> {
   }
 
   Widget _buildDeadlineItem(TaskModel task) {
-    return Padding(
-      padding: const EdgeInsets.only(left: 8, top: 4, bottom: 4),
-      child: Row(
-        children: [
-          Icon(Icons.circle, size: 8, color: _getPriorityColor(task.priority)),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              task.title,
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w500,
-                color: _getPriorityColor(task.priority),
-              ),
+    return Builder(
+      builder:
+          (context) => Padding(
+            padding: const EdgeInsets.only(left: 8, top: 4, bottom: 4),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.circle,
+                  size: 8,
+                  color: _getPriorityColor(task.priority),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    task.title,
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                      color: _getPriorityColor(task.priority),
+                    ),
+                  ),
+                ),
+                if (task.dueTime != null)
+                  Text(
+                    task.dueTime!.format(context),
+                    style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                  ),
+              ],
             ),
           ),
-          if (task.dueTime != null)
-            Text(
-              task.dueTime!.format(context),
-              style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-            ),
-        ],
-      ),
     );
   }
 
@@ -709,10 +712,105 @@ class _ReminderWidgetState extends State<ReminderWidget> {
     }
   }
 
+  // Build priority task item widget with due date label from PersonalizationHelper
+  Widget _buildPriorityTaskItem(TaskModel task, BuildContext context) {
+    final dueDateLabel = PersonalizationHelper.getTaskDueDateLabel(task);
+    final isOverdue = dueDateLabel == 'Overdue';
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+      decoration: BoxDecoration(
+        color: isOverdue ? Colors.red.withAlpha(20) : Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color:
+              isOverdue ? Colors.red.withAlpha(100) : Colors.grey.withAlpha(50),
+          width: 1,
+        ),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            isOverdue ? Icons.warning : Icons.access_time,
+            size: 16,
+            color: isOverdue ? Colors.red : Colors.orange,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  task.title,
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+                Text(
+                  dueDateLabel,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: isOverdue ? Colors.red : Colors.grey[700],
+                    fontWeight: isOverdue ? FontWeight.bold : FontWeight.normal,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Checkbox(
+            value: task.isCompleted,
+            onChanged: (value) {
+              final taskProvider = Provider.of<TaskProvider>(
+                context,
+                listen: false,
+              );
+
+              if (value != null) {
+                if (value) {
+                  taskProvider.completeTask(task.id);
+                } else {
+                  taskProvider.uncompleteTask(task.id);
+                }
+              }
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showPriorityTasksPopup(
+    BuildContext context,
+    List<TaskModel> priorityTasks,
+  ) {
+    showDialog(
+      context: context,
+      builder:
+          (context) => AlertDialog(
+            title: const Text('Priority Tasks'),
+            content: SizedBox(
+              width: double.maxFinite,
+              child: ListView.builder(
+                shrinkWrap: true,
+                itemCount: priorityTasks.length,
+                itemBuilder: (context, index) {
+                  return _buildPriorityTaskItem(priorityTasks[index], context);
+                },
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Close'),
+              ),
+            ],
+          ),
+    );
+  }
+
   void _showReminderBotPopup(BuildContext context, List<TaskModel> tasks) {
     showDialog(
       context: context,
-      builder: (BuildContext context) {
+      builder: (context) {
         return Dialog(
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
@@ -723,29 +821,14 @@ class _ReminderWidgetState extends State<ReminderWidget> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text('🤖 ReminderBot', style: AppTextStyles.heading3),
-                    IconButton(
-                      icon: const Icon(Icons.close),
-                      onPressed: () => Navigator.of(context).pop(),
-                    ),
-                  ],
-                ),
+                const Text("Today's Deadlines", style: AppTextStyles.heading3),
                 const SizedBox(height: 8),
-                Text(
-                  'You have ${tasks.length} deadline${tasks.length > 1 ? 's' : ''} today',
-                  style: AppTextStyles.bodyMedium,
-                ),
-                const SizedBox(height: 16),
                 Container(
                   constraints: BoxConstraints(
                     maxHeight: MediaQuery.of(context).size.height * 0.3,
                   ),
                   child: SingleChildScrollView(
                     child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
                       children:
                           tasks
                               .map((task) => _buildDeadlineItem(task))
@@ -757,11 +840,8 @@ class _ReminderWidgetState extends State<ReminderWidget> {
                 Align(
                   alignment: Alignment.centerRight,
                   child: TextButton(
-                    onPressed: () {
-                      Navigator.of(context).pop();
-                      Navigator.pushNamed(context, '/personal-task');
-                    },
-                    child: const Text('Go to Your Personal Task'),
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('Close'),
                   ),
                 ),
               ],
@@ -775,7 +855,7 @@ class _ReminderWidgetState extends State<ReminderWidget> {
   void _showWhatsGoingOnPopup(BuildContext context, List<TaskModel> tasks) {
     showDialog(
       context: context,
-      builder: (BuildContext context) {
+      builder: (context) {
         return Dialog(
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
@@ -786,32 +866,14 @@ class _ReminderWidgetState extends State<ReminderWidget> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text(
-                      "What's Going On",
-                      style: AppTextStyles.heading3,
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.close),
-                      onPressed: () => Navigator.of(context).pop(),
-                    ),
-                  ],
-                ),
+                const Text('Daily Tasks', style: AppTextStyles.heading3),
                 const SizedBox(height: 8),
-                Text(
-                  'Remaining today: ${tasks.length} daily task${tasks.length > 1 ? 's' : ''}',
-                  style: AppTextStyles.bodyMedium,
-                ),
-                const SizedBox(height: 16),
                 Container(
                   constraints: BoxConstraints(
                     maxHeight: MediaQuery.of(context).size.height * 0.3,
                   ),
                   child: SingleChildScrollView(
                     child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
                       children:
                           tasks
                               .map((task) => _buildDailyTaskItem(task))
@@ -823,11 +885,8 @@ class _ReminderWidgetState extends State<ReminderWidget> {
                 Align(
                   alignment: Alignment.centerRight,
                   child: TextButton(
-                    onPressed: () {
-                      Navigator.of(context).pop();
-                      Navigator.pushNamed(context, '/personal-task');
-                    },
-                    child: const Text('Go to Your Personal Task'),
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('Close'),
                   ),
                 ),
               ],

@@ -10,6 +10,7 @@ import '../providers/home_provider.dart';
 import '../../taskroom/providers/task_provider.dart';
 import '../../../providers/loading_state_provider.dart';
 import '../../../core/utils/logger.dart';
+import '../../../core/utils/personalization_helper.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -83,15 +84,24 @@ class _HomeScreenState extends State<HomeScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // Welcome section
+                        // Welcome section with personalized greeting
                         Text(
-                          '👋 Welcome back, ${UserModel.currentUser.name}!',
+                          PersonalizationHelper.getPersonalizedGreeting(
+                            UserModel.currentUser.name,
+                          ),
                           style: Theme.of(context).textTheme.headlineSmall
                               ?.copyWith(fontWeight: FontWeight.bold),
                         ),
-                        const Text(
-                          "Let's build something awesome today.",
-                          style: TextStyle(fontSize: 16),
+                        Consumer<HomeProvider>(
+                          builder: (context, provider, _) {
+                            // Show personalized productivity message based on completed tasks
+                            return Text(
+                              PersonalizationHelper.getProductivityMessage(
+                                provider.tasksCompletedThisWeek,
+                              ),
+                              style: const TextStyle(fontSize: 16),
+                            );
+                          },
                         ),
                         const SizedBox(height: 24),
 

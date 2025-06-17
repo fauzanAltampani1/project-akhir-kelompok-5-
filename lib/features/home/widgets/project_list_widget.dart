@@ -8,6 +8,7 @@ import '../../../config/themes/app_text_styles.dart';
 import '../../../data/models/user_model.dart';
 import '../../../providers/loading_state_provider.dart';
 import '../../taskroom/providers/project_provider.dart';
+import '../../../core/utils/personalization_helper.dart';
 
 class ProjectListWidget extends StatefulWidget {
   const ProjectListWidget({super.key});
@@ -20,6 +21,20 @@ class _ProjectListWidgetState extends State<ProjectListWidget>
     with TickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<double> _animation;
+
+  // Helper function to get color based on role
+  Color _getRoleColor(String role) {
+    switch (role) {
+      case 'Creator':
+        return AppColors.primary.withAlpha(25);
+      case 'Admin':
+        return AppColors.primary.withAlpha(25);
+      case 'Member':
+        return AppColors.secondary.withAlpha(25);
+      default:
+        return Colors.grey.withAlpha(25);
+    }
+  }
 
   @override
   void initState() {
@@ -111,7 +126,10 @@ class _ProjectListWidgetState extends State<ProjectListWidget>
   Widget build(BuildContext context) {
     return Consumer<ProjectProvider>(
       builder: (context, projectProvider, child) {
-        final userProjects = projectProvider.userProjects;
+        // Use PersonalizationHelper to get only projects for current user
+        final userProjects = PersonalizationHelper.getCurrentUserProjects(
+          projectProvider.projects,
+        );
         final hasProjects = userProjects.isNotEmpty;
 
         return Card(
@@ -162,39 +180,46 @@ class _ProjectListWidgetState extends State<ProjectListWidget>
                   )
                 else if (projectProvider.errorMessage != null)
                   SizedBox(
-                    height: 80,
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(
-                          Icons.error_outline,
-                          size: 24,
-                          color: Colors.red,
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          'Failed to load projects',
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 12,
+                    height: 120, // Increased height to fit content
+                    child: SingleChildScrollView(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(
+                            Icons.error_outline,
+                            size: 24,
                             color: Colors.red,
                           ),
-                        ),
-                        Text(
-                          projectProvider.errorMessage!,
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontSize: 10,
-                            color: Colors.red[700],
+                          const SizedBox(height: 2),
+                          Text(
+                            'Failed to load projects',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 12,
+                              color: Colors.red,
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: 4),
-                        ElevatedButton(
-                          onPressed: () => projectProvider.fetchProjects(),
-                          child: const Text('Retry'),
-                        ),
-                      ],
+                          Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8.0,
+                            ),
+                            child: Text(
+                              projectProvider.errorMessage!,
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: 10,
+                                color: Colors.red[700],
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          ElevatedButton(
+                            onPressed: () => projectProvider.fetchProjects(),
+                            child: const Text('Retry'),
+                          ),
+                        ],
+                      ),
                     ),
                   )
                 else if (hasProjects)
@@ -237,23 +262,17 @@ class _ProjectListWidgetState extends State<ProjectListWidget>
                                         vertical: 2,
                                       ),
                                       decoration: BoxDecoration(
-                                        color:
-                                            project.isUserAdmin(
-                                                  UserModel.currentUser.id,
-                                                )
-                                                ? AppColors.primary.withOpacity(
-                                                  0.1,
-                                                )
-                                                : AppColors.secondary
-                                                    .withOpacity(0.1),
+                                        color: _getRoleColor(
+                                          PersonalizationHelper.getUserRoleInProject(
+                                            project,
+                                          ),
+                                        ),
                                         borderRadius: BorderRadius.circular(8),
                                       ),
                                       child: Text(
-                                        project.isUserAdmin(
-                                              UserModel.currentUser.id,
-                                            )
-                                            ? 'Admin'
-                                            : 'Member',
+                                        PersonalizationHelper.getUserRoleInProject(
+                                          project,
+                                        ),
                                         style: TextStyle(
                                           fontSize: 10,
                                           fontWeight: FontWeight.bold,

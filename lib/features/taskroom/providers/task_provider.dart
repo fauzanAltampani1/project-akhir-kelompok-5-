@@ -5,6 +5,7 @@ import '../../../data/models/task_model.dart';
 import '../../../core/network/task_api_service.dart';
 import '../../../providers/loading_state_provider.dart';
 import '../../../core/utils/logger.dart';
+import '../../../core/utils/personalization_helper.dart';
 
 class TaskProvider with ChangeNotifier {
   List<TaskModel> _tasks = [];
@@ -27,6 +28,10 @@ class TaskProvider with ChangeNotifier {
 
   List<TaskModel> get deadlineTasks =>
       _tasks.where((task) => task.type == TaskType.deadline).toList();
+
+  List<TaskModel> get priorityTasks =>
+      PersonalizationHelper.getPriorityTasks(_tasks);
+
   Future<void> fetchTasksFromBackend() async {
     _isLoading = true;
     _errorMessage = null;
@@ -297,5 +302,39 @@ class TaskProvider with ChangeNotifier {
   // Tambahan method baru
   List<TaskModel> getTasksByProjectId(String projectId) {
     return _tasks.where((task) => task.projectId == projectId).toList();
+  }
+
+  // Complete task
+  Future<void> completeTask(String taskId) async {
+    final taskIndex = _tasks.indexWhere((task) => task.id == taskId);
+    if (taskIndex != -1) {
+      _tasks[taskIndex] = _tasks[taskIndex].copyWith(isCompleted: true);
+      notifyListeners();
+      try {
+        // await _api.completeTask(taskId);
+        Logger.i('TaskProvider', 'Task completed: $taskId');
+      } catch (e) {
+        Logger.e('TaskProvider', 'Error completing task: $e');
+        _tasks[taskIndex] = _tasks[taskIndex].copyWith(isCompleted: false);
+        notifyListeners();
+      }
+    }
+  }
+
+  // Uncomplete task
+  Future<void> uncompleteTask(String taskId) async {
+    final taskIndex = _tasks.indexWhere((task) => task.id == taskId);
+    if (taskIndex != -1) {
+      _tasks[taskIndex] = _tasks[taskIndex].copyWith(isCompleted: false);
+      notifyListeners();
+      try {
+        // await _api.uncompleteTask(taskId);
+        Logger.i('TaskProvider', 'Task uncompleted: $taskId');
+      } catch (e) {
+        Logger.e('TaskProvider', 'Error uncompleting task: $e');
+        _tasks[taskIndex] = _tasks[taskIndex].copyWith(isCompleted: true);
+        notifyListeners();
+      }
+    }
   }
 }
